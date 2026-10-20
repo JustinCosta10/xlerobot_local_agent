@@ -7,11 +7,12 @@ import re
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, EmitEvent, ExecuteProcess, OpaqueFunction
-from launch.actions import RegisterEventHandler, LogInfo
+from launch.actions import GroupAction, IncludeLaunchDescription, RegisterEventHandler, LogInfo
 from launch.event_handlers import OnProcessExit
 from launch.events import Shutdown
+from launch.launch_description_sources import AnyLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
-from launch_ros.actions import Node
+from launch_ros.actions import Node, PushROSNamespace
 import xacro
 import yaml
 
@@ -78,22 +79,21 @@ def setup(context):
     critical(Node(package="xlerobot_control", executable="cmd_vel_adapter", namespace=namespace,
                   parameters=[{"use_sim_time": sim_time}],
                   output="screen"), "cmd_vel adapter")
+    # Both managers already load controllers.yaml and pass it to their controllers.
+    # Keep remaps there too: the spawner's -p/--controller-ros-args paths use
+    # unbounded set_parameters calls, which can hang on a lost DDS response.
     spawner = Node(package="controller_manager", executable="spawner", namespace=namespace,
                    arguments=["joint_state_broadcaster", "left_arm_controller", "right_arm_controller",
                               "head_controller", "gripper_controller", "base_controller",
-                              "-c", f"/{namespace}/controller_manager", "-p", controllers,
+                              "-c", f"/{namespace}/controller_manager",
                               "--activate-as-group", "--controller-manager-timeout", "150",
-                              "--service-call-timeout", "150", "--switch-timeout", "30",
-                              "--controller-ros-args", f"--remap /joint_states:=/{namespace}/joint_states",
-                              "--controller-ros-args", f"--remap /dynamic_joint_states:=/{namespace}/dynamic_joint_states",
-                              "--controller-ros-args", f"--remap /{namespace}/base_controller/cmd_vel:=/{namespace}/cmd_vel",
-                              "--controller-ros-args", f"--remap /{namespace}/base_controller/odom:=/{namespace}/odom"],
+                              "--service-call-timeout", "150", "--switch-timeout", "30"],
                    output="screen")
 
     def check_spawn(event, _context):
         if event.returncode != 0:
             return [EmitEvent(event=Shutdown(reason="Controller activation failed"))]
-        return []
+        return [LogInfo(msg=f"Robot controllers ready: /cmd_vel (Twist) or /{namespace}/cmd_vel (TwistStamped)")]
 
     actions += [RegisterEventHandler(OnProcessExit(target_action=spawner, on_exit=check_spawn)), spawner,
                 Node(package="xlerobot_diagnostics", executable="bridge_monitor", namespace=namespace,
@@ -101,6 +101,16 @@ def setup(context):
                          "use_sim_time": sim_time, "require_clock": sim_time,
                          "require_backend_feedback": backend == "hardware",
                          "expected_joints": list(joint_config)}], output="screen")]
+    if value("foxglove") == "true":
+        foxglove_share = Path(get_package_share_directory("foxglove_bridge"))
+        actions.append(GroupAction([
+            PushROSNamespace(namespace),
+            IncludeLaunchDescription(
+                AnyLaunchDescriptionSource(str(foxglove_share / "launch/foxglove_bridge_launch.xml")),
+                launch_arguments={"address": value("foxglove_address"),
+                                  "port": value("foxglove_port"),
+                                  "use_sim_time": str(sim_time).lower()}.items()),
+        ]))
     if value("rviz") == "true":
         actions.append(Node(package="rviz2", executable="rviz2", namespace=namespace,
                             arguments=["-d", str(share / "rviz/simulation.rviz")],
@@ -119,6 +129,12 @@ def generate_launch_description():
         DeclareLaunchArgument("headless", default_value="false", choices=["true", "false"]),
         DeclareLaunchArgument("sensors", default_value="true", choices=["true", "false"],
                               description="Load the D455 and camera publishing graph; false excludes both"),
+        DeclareLaunchArgument("foxglove", default_value="true", choices=["true", "false"],
+                              description="Start Foxglove Bridge for ROS visualization"),
+        DeclareLaunchArgument("foxglove_address", default_value="0.0.0.0",
+                              description="Foxglove WebSocket bind address"),
+        DeclareLaunchArgument("foxglove_port", default_value="8765",
+                              description="Foxglove WebSocket port"),
         DeclareLaunchArgument("rviz", default_value="false", choices=["true", "false"]),
         DeclareLaunchArgument("state_log", default_value="",
                               description="Optional Isaac physics measurements JSONL path"),

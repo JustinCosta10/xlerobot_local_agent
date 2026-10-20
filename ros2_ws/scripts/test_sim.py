@@ -64,7 +64,7 @@ def main():
             process = subprocess.Popen([
                 "ros2", "launch", "xlerobot_bringup", "robot.launch.py",
                 f"headless:={str(not args.gui).lower()}", f"sensors:={args.sensors}",
-                "namespace:=xlerobot_test", *arguments,
+                "namespace:=xlerobot_test", "foxglove:=false", *arguments,
             ], stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
             try:
                 check_feedback(args, process, emulator)

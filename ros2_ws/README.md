@@ -45,6 +45,13 @@ each terminal. Isaac defaults to `$HOME/isaacsim`; override `ISAAC_SIM_PATH` if
 needed. `XLEROBOT_ASSET` defaults to the sibling
 `xlerobot_isaac_sim/xlerobot_dd.usd`. Launch prints the resolved USD path.
 
+Foxglove Bridge starts with every backend, under the robot namespace, and follows
+the backend's `use_sim_time` setting. Connect Foxglove to `ws://localhost:8765`,
+or `ws://<robot-ip>:8765` from another computer. The default bind address is
+`0.0.0.0`; set `foxglove_address:=127.0.0.1` for local connections only. Use
+`foxglove_port:=8766` to change the port, or `foxglove:=false` to disable the
+bridge. Robot topics, global TF, and camera topics are available through it.
+
 ## Architecture and interfaces
 
 ```mermaid
@@ -68,6 +75,11 @@ joint feedback and applies controller commands directly during physics updates.
 There is no external controller manager or command-topic transport in Isaac mode.
 Hardware and mock retain their external ROS controller manager. All modes use
 [`controllers.yaml`](src/xlerobot_control/config/controllers.yaml).
+
+The controller managers load controller settings and topic remaps before spawning.
+The spawner only loads, configures, and activates controllers; it avoids startup
+parameter writes that can wait indefinitely after a lost DDS response. Wait for
+the `Robot controllers ready` launch message before sending motion commands.
 
 GUI launches open `/World/ROS2Control` in the Action Graph editor. It contains the
 native controller manager and the clock publisher. The saved
@@ -263,17 +275,19 @@ head trajectories, sustained wheel motion, and command timeout through both
 public velocity inputs. In Isaac mode it also checks that NVIDIA’s native
 IsaacSimSystem owns the joints and that no legacy command relay is publishing.
 The motion test requires more than 2 radians of travel per wheel over five
-seconds; the earlier short-motion check could pass even when the wheels stalled.
+seconds to verify sustained movement.
 USD/URDF frame and axis parity, visible wheel meshes, contact dimensions, and
 preserved wheel-drive limits have separate offline checks.
 
-Current limitation: after restoring the graph, the Isaac interface/graph and
-head-trajectory checks pass, but sustained wheel motion still fails. Both wheels
-stop after approximately 0.98 radians (6 cm of travel) despite a nonzero velocity
-target. The restored graph does not by itself resolve that simulation fault.
-The mock and emulated-hardware backends pass sustained motion and command timeout
-checks; emulated serial-disconnect handling also passes. Earlier
-short-motion test results should not be treated as proof of working driving.
+Current status (2026-10-20): manual `cmd_vel` commands now move the robot in
+Isaac Sim, confirmed by the user. The Isaac `--check-motion` acceptance test has
+not been rerun for this documentation update; sustained travel over the test
+duration and command-timeout behavior still need automated revalidation.
+
+Previously recorded automated results: the Isaac interface/graph and
+head-trajectory checks passed. The mock and emulated-hardware backends passed
+sustained motion and command-timeout checks; emulated serial-disconnect handling
+also passed.
 
 ```bash
 source scripts/env.sh
@@ -287,7 +301,8 @@ python3 scripts/test_sim.py --backend isaac --sensors true
 
 Integration tests never open physical motor ports. They use domain 91 by default,
 namespace `xlerobot_test`, disable sensors by default (`--sensors true` enables them), and write
-`log/<backend>-test.log`. Select an unused
+`log/<backend>-test.log`. They disable Foxglove Bridge to avoid competing with an
+existing robot session for its WebSocket port. Select an unused
 domain with `--domain-id`. DDS unit tests use domains 92 and 94. Checks require
 local networking; the Isaac test also requires GPU access. The sensor-enabled
 test verifies camera messages, frame IDs, mount/optical transforms, and a single

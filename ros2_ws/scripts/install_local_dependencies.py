@@ -14,6 +14,7 @@ PACKAGES = [
     "ros-jazzy-controller-manager", "ros-jazzy-joint-state-broadcaster",
     "ros-jazzy-joint-trajectory-controller", "ros-jazzy-diff-drive-controller",
     "ros-jazzy-xacro", "ros-jazzy-urdfdom-py",
+    "ros-jazzy-foxglove-bridge", "ros-jazzy-launch-xml",
 ]
 
 

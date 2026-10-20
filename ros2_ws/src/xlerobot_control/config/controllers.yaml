@@ -3,6 +3,7 @@
     update_rate: 50
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
+      node_options_args: [--remap, /joint_states:=joint_states, --remap, /dynamic_joint_states:=dynamic_joint_states]
     left_arm_controller:
       type: joint_trajectory_controller/JointTrajectoryController
     right_arm_controller:
@@ -13,6 +14,7 @@
       type: joint_trajectory_controller/JointTrajectoryController
     base_controller:
       type: diff_drive_controller/DiffDriveController
+      node_options_args: [--remap, ~/cmd_vel:=cmd_vel, --remap, ~/odom:=odom]
 /**/joint_state_broadcaster:
   ros__parameters:
     use_local_topics: false

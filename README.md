@@ -16,5 +16,11 @@ source scripts/env.sh
 ros2 launch xlerobot_bringup robot.launch.py backend:=isaac
 ```
 
+Foxglove Bridge starts automatically; connect to `ws://localhost:8765` (or the
+robot computer's IP). Add `foxglove:=false` to launch without it.
+
+Manual `cmd_vel` driving now moves the robot in Isaac Sim, confirmed by the user.
+See [validation status](ros2_ws/README.md#validation) for automated test coverage.
+
 Use `backend:=mock` for testing without a GPU or motors. See the workspace
 README for hardware calibration, public interfaces, and known limitations.
