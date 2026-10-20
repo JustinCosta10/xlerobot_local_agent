@@ -31,6 +31,7 @@ for _xlerobot_lib in \
     "$_xlerobot_deps/usr/local/cuda-13.0/targets/x86_64-linux/lib" \
     "$_xlerobot_deps/opt/nvidia/vpi4/lib/x86_64-linux-gnu" \
     "$_xlerobot_prefix/lib/x86_64-linux-gnu" \
+    "$_xlerobot_prefix/share/isaac_ros_nitros/cuvslam/lib" \
     "$_xlerobot_prefix"/share/*/gxf/lib \
     "$_xlerobot_prefix"/share/isaac_ros_gxf/gxf/lib/*; do
     if [[ -d "$_xlerobot_lib" ]]; then

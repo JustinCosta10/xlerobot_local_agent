@@ -188,10 +188,12 @@ freshness uses wall time, including when simulation time stops.
 ## Clicked-goal navigation with live nvblox mapping
 
 The simulation navigation launch combines the existing robot interface with
-Nav2 and nvblox. It adds a small room with boxes, reconstructs obstacles from the
-D455 depth camera, and accepts goals from RViz. No saved map is required.
+Nav2, nvblox, and Isaac ROS cuVSLAM in RGBD mode. It adds a small room with boxes,
+estimates motion from the D455 images, reconstructs obstacles from depth, and
+accepts goals from RViz. No saved map is required.
 
-Install the optional dependencies once, then build and launch from `ros2_ws/`:
+Install the optional dependencies (rerun if upgrading the older ground-truth
+navigation setup), then build and launch from `ros2_ws/`:
 
 ```bash
 python3 scripts/install_local_dependencies.py --navigation
@@ -216,15 +218,16 @@ simulation workstation, not a Jetson deployment recipe.
 
 Wait for `Live depth map ready; activating Nav2` and for the Navigation 2 panel
 to show navigation as active. Choose **Nav2 Goal**, then click and drag in mapped
-free space to set the destination and final heading. The robot initially faces
-world -X; a first goal near `(x=-1.1, y=0)` with the arrow pointing toward -X is
-in front of it. The colored mesh shows reconstruction, the costmap shows
+free space to set the destination and final heading. With cuVSLAM, the map starts
+at the robot's initial base position, facing map +X. A first goal near
+`(x=0.8, y=0)` with the arrow pointing toward +X is in front of it.
+The colored mesh shows reconstruction, the costmap shows
 obstacle clearance, and the green line shows the planned path. Unknown space
 remains unknown and the planner rejects routes through it.
 
 The panel's **Localization: inactive** indicator is expected: it monitors
-Nav2's managed localization stack, while this simulation uses Isaac's measured
-pose. No **2D Pose Estimate** or saved occupancy map is needed.
+Nav2's managed localization stack, while our pose comes from cuVSLAM.
+No **2D Pose Estimate** or saved occupancy map is needed.
 
 Use the Navigation 2 panel's **Cancel** button to stop a goal. Cancel navigation
 before using manual `pub` or `/cmd_vel` commands to look around and expand the
@@ -238,21 +241,55 @@ Regulated Pure Pursuit; the navigation guard limits autonomous commands to
 0.10 m/s and 0.20 rad/s.
 Configuration is in [`xlerobot_navigation/config/`](src/xlerobot_navigation/config/).
 
-Isaac publishes the measured axle pose on `sim_ground_truth`. A simulation-only
-localization node derives `map -> odom` from that measurement and same-time wheel
-odometry. The drive controller still owns `odom -> base_link`, and the shared
-robot description owns the camera's articulated mount. `map` is aligned with the
-Isaac world, with its floor at Z=0. nvblox integrates timestamped camera poses
+The default `localization:=cuvslam` uses NVIDIA's estimator with one RGB image,
+pixel-aligned depth, and color camera calibration. Isaac renders the aligned
+depth from the color optical center; `cuvslam_depth_conversion` converts float
+meters to uint16 millimeters without changing acquisition timestamps. The
+original D455 depth stream still supplies nvblox.
+
+The launch overrides the saved camera asset's 6 Hz sensor rate to 30 Hz
+(33.3 ms between exposures in simulation time). RGBD tracking uses reliable
+image delivery so dropped UDP fragments do not discard whole RGB/depth pairs.
+The 50 ms cuVSLAM frame-interval threshold remains enabled. A repeated
+`Delta between current and previous frame ... above threshold [50 ms]` warning
+means tracking is missing frames; it is not a 50 ms processing-time measurement.
+After updating from the earlier 6 Hz setup, stop and relaunch navigation to
+apply the camera settings and discard the old reconstruction.
+
+cuVSLAM tracks `head_camera_link`, to which the camera is rigidly attached.
+`vslam_localization` uses same-time joint transforms to remove head motion and
+derive the base pose, then publishes `map -> odom`. It does not estimate motion
+or subscribe to `sim_ground_truth`. cuVSLAM's own TF publishers are disabled;
+the drive controller owns `odom -> base_link`, and the shared description owns
+the articulated camera mount. `/xlerobot/localization/pose` reports the resulting
+base pose, and `/xlerobot/visual_slam/status` reports tracking success/loss.
+
+The initial base pose defines map X/Y/yaw. Initialization assumes a level base
+with the axle 0.0635 m above the floor; subsequent estimates retain full 3D
+motion. This gives nvblox a floor-level map without reading simulator poses.
+nvblox integrates timestamped camera poses
 and projects obstacles between 0.08 m and 1.4 m into the navigation costmaps.
 Both costmaps use `map`; the local one rolls with the robot. This avoids passing
 the axle-to-floor height offset through nvblox's planar costmap transform.
 
-Autonomous velocities pass through a guard that stops on stale depth, map, pose,
-or command data, including a paused simulation clock. Mapping starts afresh with
+Autonomous velocities pass through a guard that stops on visual tracking loss
+or stale depth, map, estimated pose, tracking status, or commands, including a
+paused simulation clock. Mapping starts afresh with
 each launch, assumes a static scene, and clears reconstruction beyond 8 m of the
-robot. This milestone uses a fixed driving posture and simulated localization;
-physical localization, map persistence, and dynamic-object reconstruction are
-separate work.
+robot. cuVSLAM requires visible image features and can lose tracking in blank
+scenes. It can correct poses on loop closure; the current nvblox map does not
+reintegrate old observations after those corrections. Map persistence,
+dynamic-object reconstruction, and physical-camera bringup are separate work.
+
+For deterministic navigation debugging, use
+`ros2 launch xlerobot_navigation sim_navigation.launch.py localization:=ground_truth`.
+That mode uses Isaac's measured pose and aligns `map` with the simulator world;
+the robot initially faces -X and a goal near `(-1.1, 0)` is ahead. Ground truth
+remains published for independent test measurements in both modes, but only
+the explicit `ground_truth` mode uses it for navigation. Its message frame is
+`sim_world`, distinct from cuVSLAM's map.
+
+Configuration follows NVIDIA's [Isaac ROS 4.3 RGBD example](https://nvidia-isaac-ros.github.io/v/release-4.3/concepts/visual_slam/cuvslam/tutorial_realsense_rgbd.html).
 
 Run the isolated GPU acceptance test without opening physical motor ports:
 
@@ -262,12 +299,27 @@ python3 scripts/test_navigation.py
 ```
 
 It uses domain 96, namespace `xlerobot_test`, and a headless simulation. It checks
-reconstruction, a planned drive to a visible goal, rejection of a goal inside a
-box, and cancellation. Launch output is in `log/navigation-test.log`. Add
+reconstruction, a planned drive to a visible goal, localization error against
+independent simulator measurements, rejection of a goal inside a box, a turn
+in place, and cancellation. It also verifies that only the test observer
+subscribes to simulator ground truth in cuVSLAM mode.
+Before driving it checks stationary drift and visual frame intervals for 15
+simulation seconds. Use `--idle-seconds 90` for the longer drift regression.
+Use `--localization ground_truth` to exercise the debugging mode.
+Launch output is in `log/navigation-test.log`. Add
 `--gui` to show Isaac, `--rviz` to show the goal interface, or `--domain-id N`
 to choose another unused domain.
 
-Validated on 2026-10-20 with the RTX 5080 host: live nvblox reconstruction,
+cuVSLAM validated on 2026-10-20 with the RTX 5080 host: 0.88 m of measured travel,
+0.090 m goal error, 0.090 m visual localization error, rejection of an occupied
+goal, a 0.5 rad turn with 0.122 rad final heading error, and cancellation passed.
+The ground-truth regression also passed (0.84 m travel, 0.116 m goal error).
+Per-mode test logs are saved as `log/navigation-cuvslam-test.log` and
+`log/navigation-ground_truth-test.log` after each run. These are short simulation
+acceptance checks; physical-camera performance and long-route drift are not yet
+validated.
+
+Ground-truth baseline validated on 2026-10-20 with the RTX 5080 host: live nvblox reconstruction,
 0.83 m of actual simulated body travel with 0.119 m endpoint error, rejection
 of a goal inside the center box, and cancellation all passed. The RViz run
 loaded the robot, map, path, mesh, and Nav2 panel without plugin-load errors.

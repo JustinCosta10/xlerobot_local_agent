@@ -27,6 +27,7 @@ NAVIGATION_PACKAGES = [
     "ros-jazzy-nvblox-ros", "ros-jazzy-nvblox-nav2",
     "ros-jazzy-nvblox-rviz-plugin", "cuda-cudart-13-0", "cuda-nvrtc-13-0",
     "libcublas-13-0",
+    "ros-jazzy-isaac-ros-visual-slam",
 ]
 
 
@@ -80,7 +81,7 @@ def relocate(root):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--navigation", action="store_true",
-                        help="Also install Nav2, pinned Isaac ROS 4.3 nvblox, and CUDA 13 runtime libraries")
+                        help="Also install Nav2, Isaac ROS 4.3 nvblox/cuVSLAM, and CUDA 13 runtime libraries")
     args = parser.parse_args()
     directory = Path(__file__).resolve().parents[1] / ".deps"
     downloads = directory / "debs"
