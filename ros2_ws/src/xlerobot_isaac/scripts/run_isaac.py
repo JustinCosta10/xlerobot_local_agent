@@ -115,7 +115,14 @@ def configure_wheel_contacts(stage):
 
 def configure_camera_graph(stage):
     """Keep camera streams and mount TF; leave clock and robot TF to ROS bringup."""
+    from pxr import Sdf
+
     graph = ROBOT_PATH + "/Graphs/realsense_ros2"
+    # The saved D455 asset is throttled to 6 Hz. RGBD tracking needs an image
+    # every 33 ms of simulation time, independently of wall-clock rendering speed.
+    for name in ("Camera_OmniVision_OV9782_Color", "Camera_Pseudo_Depth"):
+        stage.GetPrimAtPath(SENSOR_PATH + "/RSD455/" + name).CreateAttribute(
+            "omni:sensor:tickRate", Sdf.ValueTypeNames.Float).Set(30.0)
     for name in ("ClockPublisher", "RobotTfCompute", "RobotTfPublisher",
                  "ChassisToBaseTfPublisher", "HeadTiltToHeadCameraTfPublisher"):
         # Disconnect execution explicitly: deactivating an individual USD node
@@ -123,6 +130,21 @@ def configure_camera_graph(stage):
         stage.GetAttributeAtPath(f"{graph}/{name}.inputs:execIn").SetConnections([])
     stage.GetAttributeAtPath(graph + "/Context.inputs:useDomainIDEnvVar").Set(True)
     stage.GetAttributeAtPath(graph + "/ReadSimulationTime.inputs:resetOnStop").Set(False)
+    # Render depth from the COLOR optical center and intrinsics. cuVSLAM RGBD
+    # requires pixel-aligned images; the saved D455 depth camera is offset.
+    # Author only this in-memory composition, leaving the saved USD untouched.
+    source = stage.GetPrimAtPath(graph + "/ColorImagePublisher")
+    aligned = stage.DefinePrim(graph + "/AlignedDepthPublisher", "OmniGraphNode")
+    for attribute in source.GetAttributes():
+        target = aligned.CreateAttribute(attribute.GetName(), attribute.GetTypeName(),
+                                         custom=attribute.IsCustom())
+        if attribute.Get() is not None:
+            target.Set(attribute.Get())
+        if attribute.GetConnections():
+            target.SetConnections(attribute.GetConnections())
+        target.SetCustomData(attribute.GetCustomData())
+    aligned.GetAttribute("inputs:type").Set("depth")
+    aligned.GetAttribute("inputs:topicName").Set("/camera/aligned_depth_to_color/image_raw_float")
 
 
 def show_control_graph(stage):
@@ -287,6 +309,12 @@ def main():
         if not args.headless:
             show_control_graph(stage)
         SimulationManager.setup_simulation(dt=1.0 / 60.0, device="cpu")
+        if args.sensors:
+            from isaacsim.core.rendering_manager import RenderingManager
+            # Advance a fixed 1/30 s per camera frame, even if rendering is slower
+            # than real time. Wall-clock catch-up otherwise skips large amounts
+            # of motion between visual observations (up to ten physics steps).
+            RenderingManager.set_dt(1.0 / 30.0)
         app_utils.play()
         running = True
         if args.navigation_scene:

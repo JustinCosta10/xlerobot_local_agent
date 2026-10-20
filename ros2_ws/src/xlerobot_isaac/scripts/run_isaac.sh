@@ -9,6 +9,9 @@ export CARB_APP_PATH="$isaac_sim_dir/kit"
 export ISAAC_PATH="$isaac_sim_dir"
 export EXP_PATH="$isaac_sim_dir/apps"
 source "$isaac_sim_dir/setup_python_env.sh"
+# cuVSLAM's transitive build dependencies include Ubuntu's libpython. Kit must
+# load its own matching Python runtime before any locally extracted system one.
+export LD_LIBRARY_PATH="$isaac_sim_dir/kit/python/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 # Native ros2_control loads ROS plugins after startup. Their bundled dependencies
 # must already be on the dynamic loader's search path when Python starts.
 ros_distro="${ROS_DISTRO:-jazzy}"

@@ -29,8 +29,17 @@ class MappingStatus(Node):
                                  lambda m: self.record("depth", m), qos_profile_sensor_data)
         self.create_subscription(DistanceMapSlice, "nvblox_node/static_map_slice",
                                  self.on_map, 1)
-        self.create_subscription(PoseStamped, "sim_ground_truth",
+        self.create_subscription(PoseStamped, "localization/pose",
                                  lambda m: self.record("pose", m), 10)
+        self.require_visual_tracking = self.declare_parameter("require_visual_tracking", False).value
+        self.tracking_ok = False
+        if self.require_visual_tracking:
+            from isaac_ros_visual_slam_interfaces.msg import VisualSlamStatus
+            self.create_subscription(VisualSlamStatus, "visual_slam/status", self.on_tracking, 10)
+
+    def on_tracking(self, message):
+        self.tracking_ok = message.vo_state == 1
+        self.record("tracking", message)
 
     def record(self, name, message):
         self.samples[name] = (time.monotonic(), stamp_seconds(message.header.stamp))
@@ -41,6 +50,9 @@ class MappingStatus(Node):
 
     def ready(self):
         now = self.get_clock().now().nanoseconds * 1e-9
+        if self.require_visual_tracking and (not self.tracking_ok or not fresh(
+                self.samples.get("tracking"), time.monotonic(), now, 2.0)):
+            return False
         return now > 0 and all(fresh(self.samples.get(key), time.monotonic(), now, 2.0)
                                for key in ("depth", "map", "pose"))
 

@@ -39,6 +39,12 @@ Visualization Manager:
       Topic:
         Value: /__NS__/plan
     - Class: rviz_default_plugins/PointCloud2
+      Name: cuVSLAM landmarks
+      Enabled: false
+      Size (Pixels): 3
+      Topic:
+        Value: /__NS__/visual_slam/vis/landmarks_cloud
+    - Class: rviz_default_plugins/PointCloud2
       Name: Camera points
       Enabled: false
       Size (Pixels): 2
@@ -62,6 +68,6 @@ Visualization Manager:
       Pitch: 1.1
       Yaw: 0
       Focal Point:
-        X: -1.5
+        X: 1.5
         Y: 0
         Z: 0

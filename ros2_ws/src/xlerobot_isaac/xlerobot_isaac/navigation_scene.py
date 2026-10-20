@@ -62,7 +62,8 @@ class GroundTruthPublisher:
         self.previous_time = sim_time
         xyz, xyzw = base_pose(chassis_pose, self.base_to_chassis)
         message = PoseStamped()
-        message.header.frame_id = "map"
+        # cuVSLAM's map has its own origin; simulator coordinates are independent.
+        message.header.frame_id = "sim_world"
         nanoseconds = round(sim_time * 1e9)
         message.header.stamp.sec, message.header.stamp.nanosec = divmod(nanoseconds, 10**9)
         message.pose.position.x, message.pose.position.y, message.pose.position.z = map(float, xyz)

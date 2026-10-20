@@ -45,7 +45,11 @@ def main():
     # Check camera graph wiring offline without loading the external D455 asset.
     graph = runner["ROBOT_PATH"] + "/Graphs/realsense_ros2"
     stage.GetPrimAtPath(graph).SetActive(True)
+    stage.GetPrimAtPath(runner["SENSOR_PATH"]).SetActive(True)
     runner["configure_camera_graph"](stage)
+    for name in ("Camera_OmniVision_OV9782_Color", "Camera_Pseudo_Depth"):
+        assert stage.GetAttributeAtPath(runner["SENSOR_PATH"] + "/RSD455/" + name +
+                                        ".omni:sensor:tickRate").Get() == 30.0
     for name in ("ClockPublisher", "RobotTfCompute", "RobotTfPublisher",
                  "ChassisToBaseTfPublisher", "HeadTiltToHeadCameraTfPublisher"):
         assert not stage.GetAttributeAtPath(f"{graph}/{name}.inputs:execIn").GetConnections()
@@ -54,6 +58,11 @@ def main():
         assert stage.GetPrimAtPath(f"{graph}/{name}").IsActive()
         assert stage.GetAttributeAtPath(f"{graph}/{name}.inputs:execIn").GetConnections()
     assert stage.GetAttributeAtPath(graph + "/Context.inputs:useDomainIDEnvVar").Get()
+    aligned = stage.GetPrimAtPath(graph + "/AlignedDepthPublisher")
+    assert aligned.GetAttribute("inputs:type").Get() == "depth"
+    assert aligned.GetAttribute("inputs:frameId").Get() == "camera_color_optical_frame"
+    assert aligned.GetAttribute("inputs:renderProductPath").GetConnections() == \
+        stage.GetAttributeAtPath(graph + "/ColorImagePublisher.inputs:renderProductPath").GetConnections()
     print("PASS camera graph retains streams and mount TF; duplicate clock/robot TF execution disconnected")
     # Reproduce the reported regression: valid physics with invisible wheels.
     UsdGeom.Imageable(stage.GetPrimAtPath(body + "/left_wheel")).MakeInvisible()

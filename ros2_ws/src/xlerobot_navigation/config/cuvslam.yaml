@@ -1,0 +1,29 @@
+/**:
+  ros__parameters:
+    use_sim_time: true
+    tracking_mode: 2  # RGBD, no simulated IMU required.
+    num_cameras: 1
+    min_num_images: 1
+    depth_camera_id: 0
+    depth_scale_factor: 1000.0
+    rectified_images: false  # true selects stereo-pair rectification in cuVSLAM.
+    enable_image_denoising: false
+    # Large fragmented RGB/depth messages need retransmission on this host.
+    image_qos: DEFAULT
+    image_jitter_threshold_ms: 50.0
+    sync_matching_threshold_ms: 5.0
+    enable_localization_n_mapping: true
+    enable_ground_constraint_in_odometry: false
+    enable_ground_constraint_in_slam: false
+    # The articulated head cannot be treated as rigidly attached to base_link.
+    base_frame: head_camera_link
+    camera_optical_frames: [camera_color_optical_frame]
+    map_frame: vslam_map
+    odom_frame: vslam_odom
+    publish_map_to_odom_tf: false
+    publish_odom_to_base_tf: false
+    override_publishing_stamp: false
+    enable_slam_visualization: true
+    enable_landmarks_view: true
+    enable_observations_view: false
+
