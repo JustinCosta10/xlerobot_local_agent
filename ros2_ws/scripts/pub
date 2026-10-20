@@ -1,0 +1,47 @@
+#!/usr/bin/env python3
+"""Publish cmd_vel at 10 Hz until Ctrl+C. Speeds are m/s and rad/s."""
+
+import argparse
+import json
+import math
+import os
+
+
+def speed(value):
+    try:
+        result = float(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError("speed must be a number") from None
+    if not math.isfinite(result):
+        raise argparse.ArgumentTypeError("speed must be finite")
+    return result
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        epilog="Examples: pub 0.05 (forward), pub 0 0.15 (turn left), pub 0 (stop).",
+    )
+    parser.add_argument("linear", nargs="?", type=speed, default=0.0,
+                        help="forward speed in m/s (default: 0; negative reverses)")
+    parser.add_argument("angular", nargs="?", type=speed, default=0.0,
+                        help="turn speed in rad/s (default: 0; negative turns right)")
+    parser.add_argument("--namespace", default="xlerobot", help="robot namespace (default: xlerobot)")
+    parser.add_argument("--wall-time", action="store_true",
+                        help="use wall time for hardware or mock instead of Isaac simulation time")
+    args = parser.parse_args()
+    topic = f"/{args.namespace.strip('/')}/cmd_vel"
+    message = {"header": "auto", "twist": {
+        "linear": {"x": args.linear}, "angular": {"z": args.angular},
+    }}
+    command = ["ros2", "topic", "pub", "--rate", "10", "--print", "0"]
+    if not args.wall_time:
+        command.append("--use-sim-time")
+    command += [topic, "geometry_msgs/msg/TwistStamped", json.dumps(message)]
+    print(f"Publishing to {topic}: {args.linear:g} m/s, {args.angular:g} rad/s. "
+          "Ctrl+C to stop.", flush=True)
+    os.execvp(command[0], command)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>xlerobot_isaac</name>
+  <version>0.1.0</version>
+  <description>XLeRobot Isaac Sim bridge runner, health monitor, and connectivity check.</description>
+  <maintainer email="justin@example.com">Justin</maintainer>
+  <license>Proprietary</license>
+  <buildtool_depend>ament_python</buildtool_depend>
+  <exec_depend>xlerobot_diagnostics</exec_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>rosgraph_msgs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>tf2_msgs</exec_depend>
+  <exec_depend>diagnostic_msgs</exec_depend>
+  <exec_depend>rmw_fastrtps_cpp</exec_depend>
+  <test_depend>python3-pytest</test_depend>
+  <test_depend>geometry_msgs</test_depend>
+  <export><build_type>ament_python</build_type></export>
+</package>

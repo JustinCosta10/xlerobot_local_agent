@@ -1,0 +1,5 @@
+<library path="xlerobot_topic_system">
+  <class name="xlerobot_control/TopicSystem" type="xlerobot_control::TopicSystem" base_class_type="hardware_interface::SystemInterface">
+    <description>Measured-state initialization, separate position/velocity transport, and feedback timeout handling.</description>
+  </class>
+</library>

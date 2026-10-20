@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>xlerobot_bringup</name>
+  <version>0.1.0</version>
+  <description>Launch and visualization configuration for the XLeRobot simulation stack.</description>
+  <maintainer email="justin@example.com">Justin</maintainer>
+  <license>Proprietary</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+  <exec_depend>xlerobot_isaac</exec_depend>
+  <exec_depend>xlerobot_description</exec_depend>
+  <exec_depend>xlerobot_control</exec_depend>
+  <exec_depend>xlerobot_diagnostics</exec_depend>
+  <exec_depend>xlerobot_hardware</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>xacro</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+  <export><build_type>ament_cmake</build_type></export>
+</package>

@@ -1,0 +1,70 @@
+/**/controller_manager:
+  ros__parameters:
+    update_rate: 50
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+    left_arm_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+    right_arm_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+    head_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+    gripper_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+    base_controller:
+      type: diff_drive_controller/DiffDriveController
+/**/joint_state_broadcaster:
+  ros__parameters:
+    use_local_topics: false
+    interfaces: [position, velocity]
+/**/left_arm_controller:
+  ros__parameters:
+    joints: [Rotation_L, Pitch_L, Elbow_L, Wrist_Pitch_L, Wrist_Roll_L]
+    command_interfaces: [position]
+    state_interfaces: [position, velocity]
+    allow_partial_joints_goal: false
+/**/right_arm_controller:
+  ros__parameters:
+    joints: [Rotation_R, Pitch_R, Elbow_R, Wrist_Pitch_R, Wrist_Roll_R]
+    command_interfaces: [position]
+    state_interfaces: [position, velocity]
+    allow_partial_joints_goal: false
+/**/head_controller:
+  ros__parameters:
+    joints: [head_pan_joint, head_tilt_joint]
+    command_interfaces: [position]
+    state_interfaces: [position, velocity]
+    allow_partial_joints_goal: false
+/**/gripper_controller:
+  ros__parameters:
+    joints: [Jaw_L, Jaw_R]
+    command_interfaces: [position]
+    state_interfaces: [position, velocity]
+    allow_partial_joints_goal: false
+/**/base_controller:
+  ros__parameters:
+    # Source wheel names are opposite physical sides when facing chassis -X.
+    # base_link faces that way so positive authored rotation drives ROS +X.
+    left_wheel_names: [right_wheel_joint]
+    right_wheel_names: [left_wheel_joint]
+    # Saved DD model: 5-inch tires; 0.45 m track is the visual model placement.
+    wheel_separation: 0.45
+    wheel_radius: 0.0635
+    open_loop: false
+    position_feedback: true
+    odom_frame_id: odom
+    base_frame_id: base_link
+    tf_frame_prefix_enable: false
+    enable_odom_tf: true
+    cmd_vel_timeout: 0.5
+    publish_rate: 50.0
+    pose_covariance_diagonal: [0.001, 0.001, 0.001, 0.001, 0.001, 0.01]
+    twist_covariance_diagonal: [0.001, 0.001, 0.001, 0.001, 0.001, 0.01]
+    linear.x.max_velocity: 0.10
+    linear.x.min_velocity: -0.10
+    linear.x.max_acceleration: 0.2
+    linear.x.max_deceleration: -0.2
+    angular.z.max_velocity: 0.2
+    angular.z.min_velocity: -0.2
+    angular.z.max_acceleration: 0.4
+    angular.z.max_deceleration: -0.4

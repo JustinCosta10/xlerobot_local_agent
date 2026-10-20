@@ -1,0 +1,3 @@
+# Install in .deps/python (see README); colcon does not install pip dependencies.
+feetech-servo-sdk==1.0.0
+pyserial==3.5

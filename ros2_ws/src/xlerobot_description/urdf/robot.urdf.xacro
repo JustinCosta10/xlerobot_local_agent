@@ -1,0 +1,49 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="xlerobot_dd">
+  <xacro:arg name="backend" default="isaac"/>
+  <xacro:arg name="namespace" default="xlerobot"/>
+  <xacro:include filename="$(find xlerobot_description)/urdf/kinematics.urdf"/>
+  <xacro:property name="joint_config" value="${xacro.load_yaml('$(find xlerobot_description)/config/joints.yaml')['joints']}"/>
+  <!-- Isaac's native plugin derives its hardware interfaces from the USD. -->
+  <xacro:unless value="${'$(arg backend)' == 'isaac'}">
+  <ros2_control name="XLeRobotSystem" type="system">
+    <hardware>
+      <xacro:if value="${'$(arg backend)' == 'mock'}">
+        <plugin>mock_components/GenericSystem</plugin>
+        <param name="calculate_dynamics">true</param>
+      </xacro:if>
+      <xacro:unless value="${'$(arg backend)' == 'mock'}">
+        <plugin>xlerobot_control/TopicSystem</plugin>
+        <param name="namespace">$(arg namespace)</param>
+        <param name="feedback_timeout">1.0</param>
+        <param name="startup_timeout">120.0</param>
+      </xacro:unless>
+    </hardware>
+    <xacro:macro name="control_joint" params="name">
+      <joint name="${name}">
+        <command_interface name="${joint_config[name]['command_interface']}">
+          <xacro:if value="${joint_config[name]['command_interface'] == 'position'}">
+            <param name="min">${joint_config[name]['lower']}</param>
+            <param name="max">${joint_config[name]['upper']}</param>
+          </xacro:if>
+          <xacro:if value="${joint_config[name]['command_interface'] == 'velocity'}">
+            <param name="min">${-joint_config[name]['velocity']}</param>
+            <param name="max">${joint_config[name]['velocity']}</param>
+          </xacro:if>
+        </command_interface>
+        <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+        <state_interface name="velocity"><param name="initial_value">0.0</param></state_interface>
+      </joint>
+    </xacro:macro>
+    <xacro:control_joint name="left_wheel_joint"/>
+    <xacro:control_joint name="right_wheel_joint"/>
+    <xacro:control_joint name="Rotation_L"/><xacro:control_joint name="Pitch_L"/>
+    <xacro:control_joint name="Elbow_L"/><xacro:control_joint name="Wrist_Pitch_L"/>
+    <xacro:control_joint name="Wrist_Roll_L"/><xacro:control_joint name="Jaw_L"/>
+    <xacro:control_joint name="Rotation_R"/><xacro:control_joint name="Pitch_R"/>
+    <xacro:control_joint name="Elbow_R"/><xacro:control_joint name="Wrist_Pitch_R"/>
+    <xacro:control_joint name="Wrist_Roll_R"/><xacro:control_joint name="Jaw_R"/>
+    <xacro:control_joint name="head_pan_joint"/><xacro:control_joint name="head_tilt_joint"/>
+  </ros2_control>
+  </xacro:unless>
+</robot>

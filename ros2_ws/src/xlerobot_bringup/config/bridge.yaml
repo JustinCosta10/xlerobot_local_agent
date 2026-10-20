@@ -1,0 +1,4 @@
+/**:
+  ros__parameters:
+    stale_after: 3.0
+    base_frame: head_tilt_link

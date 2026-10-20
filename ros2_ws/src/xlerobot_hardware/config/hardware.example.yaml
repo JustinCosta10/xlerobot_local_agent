@@ -1,0 +1,148 @@
+# Stock TWO-WHEEL mapping from Vector-Wangel/XLeRobot:
+# software/src/robots/xlerobot_2wheels/xlerobot_2wheels.py (upstream main, 2026-10-19).
+# No mapping/calibration from toro/xlerobot-pro is used.
+# Copy this file, verify IDs, and fill every null before selecting backend:=hardware.
+# zero_tick is Present_Position at URDF joint angle 0 after existing servo homing.
+# direction maps increasing ticks to positive URDF radians. Calibration is in ticks;
+# max_velocity is rad/s. Never substitute LeRobot normalized percentages/degrees.
+# Servo operating modes must already be 0 (position joints) and 1 (wheels).
+# The bridge does not change modes, EEPROM, IDs, homing offsets, or PID gains.
+driver: sts3215
+update_rate: 30.0
+command_timeout: 0.5
+buses:
+  left_head:
+    port: null
+    baudrate: 1000000
+  right_base:
+    port: null
+    baudrate: 1000000
+joints:
+  Rotation_L:
+    bus: left_head
+    id: 1
+    zero_tick: null
+    direction: null
+    min_tick: null
+    max_tick: null
+    max_velocity: 0.5
+  Pitch_L:
+    bus: left_head
+    id: 2
+    zero_tick: null
+    direction: null
+    min_tick: null
+    max_tick: null
+    max_velocity: 0.5
+  Elbow_L:
+    bus: left_head
+    id: 3
+    zero_tick: null
+    direction: null
+    min_tick: null
+    max_tick: null
+    max_velocity: 0.5
+  Wrist_Pitch_L:
+    bus: left_head
+    id: 4
+    zero_tick: null
+    direction: null
+    min_tick: null
+    max_tick: null
+    max_velocity: 0.5
+  Wrist_Roll_L:
+    bus: left_head
+    id: 5
+    zero_tick: null
+    direction: null
+    min_tick: null
+    max_tick: null
+    max_velocity: 0.5
+  Jaw_L:
+    bus: left_head
+    id: 6
+    zero_tick: null
+    direction: null
+    min_tick: null
+    max_tick: null
+    max_velocity: 0.5
+  Rotation_R:
+    bus: right_base
+    id: 1
+    zero_tick: null
+    direction: null
+    min_tick: null
+    max_tick: null
+    max_velocity: 0.5
+  Pitch_R:
+    bus: right_base
+    id: 2
+    zero_tick: null
+    direction: null
+    min_tick: null
+    max_tick: null
+    max_velocity: 0.5
+  Elbow_R:
+    bus: right_base
+    id: 3
+    zero_tick: null
+    direction: null
+    min_tick: null
+    max_tick: null
+    max_velocity: 0.5
+  Wrist_Pitch_R:
+    bus: right_base
+    id: 4
+    zero_tick: null
+    direction: null
+    min_tick: null
+    max_tick: null
+    max_velocity: 0.5
+  Wrist_Roll_R:
+    bus: right_base
+    id: 5
+    zero_tick: null
+    direction: null
+    min_tick: null
+    max_tick: null
+    max_velocity: 0.5
+  Jaw_R:
+    bus: right_base
+    id: 6
+    zero_tick: null
+    direction: null
+    min_tick: null
+    max_tick: null
+    max_velocity: 0.5
+  head_pan_joint:
+    bus: left_head
+    id: 7
+    zero_tick: null
+    direction: null
+    min_tick: null
+    max_tick: null
+    max_velocity: 0.5
+  head_tilt_joint:
+    bus: left_head
+    id: 8
+    zero_tick: null
+    direction: null
+    min_tick: null
+    max_tick: null
+    max_velocity: 0.5
+  left_wheel_joint:
+    bus: right_base
+    id: 9
+    zero_tick: 0
+    direction: null
+    min_tick: 0
+    max_tick: 4095
+    max_velocity: 3.0
+  right_wheel_joint:
+    bus: right_base
+    id: 10
+    zero_tick: 0
+    direction: null
+    min_tick: 0
+    max_tick: 4095
+    max_velocity: 3.0
