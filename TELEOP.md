@@ -7,6 +7,7 @@ With the robot running, open a **second terminal** and paste:
 ```bash
 cd /home/justin/xlerobot-research/ros2_ws
 source scripts/env.sh
+# Slow preset: 0.10 m/s forward; turn = pi/6 rad/s = 30 degrees per second.
 ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args \
   -r cmd_vel:=/cmd_vel \
   -p stamped:=false \
