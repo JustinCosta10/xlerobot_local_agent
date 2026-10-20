@@ -2,7 +2,7 @@
 <package format="3">
   <name>xlerobot_bringup</name>
   <version>0.1.0</version>
-  <description>Launch and visualization configuration for the XLeRobot simulation stack.</description>
+  <description>Shared launch and visualization for XLeRobot Isaac, hardware, and mock backends.</description>
   <maintainer email="justin@example.com">Justin</maintainer>
   <license>Proprietary</license>
   <buildtool_depend>ament_cmake</buildtool_depend>

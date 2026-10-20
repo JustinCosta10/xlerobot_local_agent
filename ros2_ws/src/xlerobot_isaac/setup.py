@@ -16,8 +16,4 @@ setup(
     description="XLeRobot Isaac Sim integration",
     license="Proprietary",
     tests_require=["pytest"],
-    entry_points={"console_scripts": [
-        "bridge_monitor = xlerobot_isaac.monitor:main",
-        "check_bridge = xlerobot_isaac.monitor:check_main",
-    ]},
 )

@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="3">
   <name>xlerobot_description</name><version>0.2.0</version>
-  <description>Shared XLeRobot kinematics generated from the authoritative MJCF.</description>
+  <description>Shared XLeRobot kinematics generated from the saved DD URDF.</description>
   <maintainer email="justin@example.com">Justin</maintainer><license>Proprietary</license>
   <buildtool_depend>ament_cmake</buildtool_depend>
   <exec_depend>xacro</exec_depend><exec_depend>robot_state_publisher</exec_depend>

@@ -22,7 +22,7 @@ def test_measured_startup_complete_feedback_and_latched_stale_error(tmp_path):
     share = Path(get_package_share_directory("xlerobot_description"))
     model = yaml.safe_load((share / "config/joints.yaml").read_text())["joints"]
     description = xacro.process_file(str(share / "urdf/robot.urdf.xacro"),
-                                    mappings={"backend": "isaac", "namespace": "transport_test"}).toxml()
+                                    mappings={"backend": "hardware", "namespace": "transport_test"}).toxml()
     context = Context()
     rclpy.init(context=context, domain_id=94)
     peer = Node("transport_peer", namespace="transport_test", context=context)

@@ -29,10 +29,7 @@ if [[ -f "$_xlerobot_ws/install/local_setup.bash" ]]; then
     source "$_xlerobot_ws/install/local_setup.bash"
 fi
 export ISAAC_SIM_PATH="${ISAAC_SIM_PATH:-$HOME/isaacsim}"
-# Migrate the previous default in terminals that have already sourced env.sh.
-if [[ -z "${XLEROBOT_ASSET:-}" || "$(realpath -m -- "$XLEROBOT_ASSET")" == "$(realpath -m -- "$_xlerobot_ws/../xlerobot_isaac_sim/xlerobot_isaac.usd")" ]]; then
-    export XLEROBOT_ASSET="$_xlerobot_ws/../xlerobot_isaac_sim/xlerobot_dd.usd"
-fi
+export XLEROBOT_ASSET="${XLEROBOT_ASSET:-$_xlerobot_ws/../xlerobot_isaac_sim/xlerobot_dd.usd}"
 export RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}"
 # Use the same domain in all terminals; keep this simulation separate from domain 0.
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-42}"

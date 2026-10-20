@@ -33,8 +33,7 @@ the selected backend: `true` for Isaac, `false` for hardware or mock.
 `headless:=true` runs Isaac without its GUI; `rviz:=true` opens the shared robot
 model and TF display. Sensors and their publishing graph load by default;
 `sensors:=false` excludes both the external D455 model and its graph.
-`namespace:=xlerobot` is the default. The older
-`sim.launch.py` entry point forwards to `robot.launch.py backend:=isaac`.
+`namespace:=xlerobot` is the default.
 `start_sim:=false` starts the ROS nodes and spawners for an Isaac instance
 already configured with this runner’s native controller graph, namespace, model,
 and controller YAML. Opening the saved robot USD alone does not create that graph.
@@ -44,8 +43,7 @@ workspace overlay. It defaults to `ROS_DOMAIN_ID=42` and
 `RMW_IMPLEMENTATION=rmw_fastrtps_cpp`, preserving existing values. Source it in
 each terminal. Isaac defaults to `$HOME/isaacsim`; override `ISAAC_SIM_PATH` if
 needed. `XLEROBOT_ASSET` defaults to the sibling
-`xlerobot_isaac_sim/xlerobot_dd.usd`. Source `env.sh` again in existing terminals
-to replace the previous default. Launch prints the resolved USD path.
+`xlerobot_isaac_sim/xlerobot_dd.usd`. Launch prints the resolved USD path.
 
 ## Architecture and interfaces
 
@@ -221,8 +219,7 @@ The selected model is `../xlerobot_isaac_sim/xlerobot_dd.usd`: the recovered
 XLeRobot with detailed 5-inch tires, printed hubs, rear-only caster meshes,
 wheel contact materials, and its saved RealSense mount. The matching URDF and
 33 meshes are stored under `../xlerobot_isaac_sim/source/`; this workspace has
-no runtime dependency on the original project. The older
-`xlerobot_isaac.usd` and workbench remain available for archival inspection.
+no runtime dependency on the original project.
 
 Regenerate the shared ROS description after editing the DD source URDF:
 
