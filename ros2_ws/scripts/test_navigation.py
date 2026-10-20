@@ -12,15 +12,17 @@ import statistics
 import subprocess
 import time
 
+import numpy as np
 import rclpy
 from action_msgs.msg import GoalStatus
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, TwistStamped
 from lifecycle_msgs.srv import GetState
 from nav2_msgs.action import NavigateToPose
 from nav_msgs.msg import Odometry, Path as NavPath
 from nvblox_msgs.msg import DistanceMapSlice
 from rclpy.action import ActionClient
 from rclpy.parameter import Parameter
+from sensor_msgs.msg import JointState
 
 
 def check(process, localization, idle_seconds):
@@ -28,15 +30,19 @@ def check(process, localization, idle_seconds):
     node = rclpy.create_node("navigation_acceptance", parameter_overrides=[Parameter("use_sim_time", value=True)])
     data = {}
     pose_stamps = deque(maxlen=12000)
+    turn_samples = None
 
     def receive(key, message):
         data[key] = message
         if key == "estimate":
             pose_stamps.append(message.header.stamp.sec + message.header.stamp.nanosec * 1e-9)
+        if turn_samples is not None and key in turn_samples:
+            turn_samples[key].append(message)
     for key, topic, msg_type in (
         ("pose", "/xlerobot_test/sim_ground_truth", PoseStamped),
         ("estimate", "/xlerobot_test/localization/pose", PoseStamped),
         ("odom", "/xlerobot_test/odom", Odometry),
+        ("joints", "/xlerobot_test/joint_states", JointState),
         ("slice", "/xlerobot_test/nvblox_node/static_map_slice", DistanceMapSlice),
         ("path", "/xlerobot_test/plan", NavPath),
     ):
@@ -169,6 +175,85 @@ def check(process, localization, idle_seconds):
         wait(lambda: abs(data["odom"].twist.twist.linear.x) < 0.015
              and abs(data["odom"].twist.twist.angular.z) < 0.03, 5, "stop after cancel")
         print("PASS: cancellation stops the base", flush=True)
+
+        # A short turn neither exercises several wheel revolutions nor observes
+        # every wall. Check wrapping and visual drift throughout a complete turn.
+        turn_samples = {key: [] for key in ("pose", "estimate", "odom", "joints")}
+        drive = node.create_publisher(TwistStamped, "/xlerobot_test/cmd_vel", 10)
+        last_heading = yaw(data["pose"].pose)
+        accumulated = 0.0
+        last_command = 0.0
+
+        def full_turn():
+            nonlocal accumulated, last_heading, last_command
+            heading = yaw(data["pose"].pose)
+            accumulated += math.atan2(math.sin(heading-last_heading), math.cos(heading-last_heading))
+            last_heading = heading
+            if accumulated >= 2 * math.pi:
+                return True
+            if time.monotonic() - last_command >= 0.05:
+                command = TwistStamped()
+                command.header.stamp = node.get_clock().now().to_msg()
+                command.twist.angular.z = 0.3
+                drive.publish(command)
+                last_command = time.monotonic()
+            return False
+
+        try:
+            wait(full_turn, 180, "measured full 360-degree rotation")
+        finally:
+            stop = TwistStamped()
+            stop.header.stamp = node.get_clock().now().to_msg()
+            drive.publish(stop)
+        stopped_at = node.get_clock().now().nanoseconds
+        wait(lambda: node.get_clock().now().nanoseconds - stopped_at >= 3_000_000_000,
+             30, "settle after full rotation")
+        samples, turn_samples = turn_samples, None
+        assert len(samples["odom"]) > 100 and len(samples["joints"]) > 100, \
+            "Insufficient wheel feedback during full rotation"
+
+        def stamp(message):
+            return message.header.stamp.sec + message.header.stamp.nanosec * 1e-9
+
+        truth = samples["pose"]
+        times = [stamp(m) for m in truth]
+        estimates = [m for m in samples["estimate"] if times[0] <= stamp(m) <= times[-1]]
+        assert len(estimates) > 100, "Too few visual poses during full rotation"
+        assert stamp(estimates[-1]) - stamp(estimates[0]) > 0.9 * (times[-1] - times[0]), \
+            "Localization did not cover the full rotation"
+        gaps = np.diff([stamp(m) for m in estimates])
+        assert max(gaps) < 0.2, f"Localization stalled during rotation: {max(gaps):.3f} s"
+        x = np.interp([stamp(m) for m in estimates], times, [m.pose.position.x for m in truth])
+        y = np.interp([stamp(m) for m in estimates], times, [m.pose.position.y for m in truth])
+        headings = np.interp([stamp(m) for m in estimates], times,
+                             np.unwrap([yaw(m.pose) for m in truth]))
+        errors, heading_errors = [], []
+        for message, tx, ty, heading in zip(estimates, x, y, headings):
+            ex, ey = mapped(tx, ty)
+            errors.append(math.hypot(message.pose.position.x-ex, message.pose.position.y-ey))
+            angle = yaw(message.pose) - heading - world_to_map[2]
+            heading_errors.append(abs(math.atan2(math.sin(angle), math.cos(angle))))
+        assert max(errors) < .15, f"Full-turn localization error: {max(errors):.3f} m"
+        assert max(heading_errors) < .15, f"Full-turn heading error: {max(heading_errors):.3f} rad"
+        for before, after in zip(samples["odom"], samples["odom"][1:]):
+            dt = stamp(after) - stamp(before)
+            # Isaac can publish two controller samples within one clock tick.
+            # Still check their pose increments; duplicate stamps cannot hide jumps.
+            assert 0 <= dt < .2, f"Invalid or missing wheel odometry: interval {dt:.3f} s"
+            p, q = before.pose.pose, after.pose.pose
+            # Generous margins for measured wheel jitter, but reject wrap jumps.
+            assert math.hypot(q.position.x-p.position.x, q.position.y-p.position.y) < .03 + .2*dt, \
+                "Wheel odometry position jumped during rotation"
+            angle = yaw(q) - yaw(p)
+            assert abs(math.atan2(math.sin(angle), math.cos(angle))) < .1 + .7*dt, \
+                "Wheel odometry heading jumped during rotation"
+        wraps = 0
+        for name in ("left_wheel_joint", "right_wheel_joint"):
+            positions = [m.position[m.name.index(name)] for m in samples["joints"]]
+            wraps += sum(abs(b-a) > 6 for a, b in zip(positions, positions[1:]))
+        print(f"PASS: full 360-degree rotation; max localization error {max(errors):.3f} m, "
+              f"heading error {max(heading_errors):.3f} rad; continuous odometry across "
+              f"{wraps} raw wheel-angle wraps", flush=True)
     finally:
         client.destroy()
         node.destroy_node()

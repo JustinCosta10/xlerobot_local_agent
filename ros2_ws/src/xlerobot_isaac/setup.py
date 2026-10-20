@@ -1,3 +1,5 @@
+from glob import glob
+
 from setuptools import find_packages, setup
 
 setup(
@@ -8,6 +10,7 @@ setup(
         ("share/ament_index/resource_index/packages", ["resource/xlerobot_isaac"]),
         ("share/xlerobot_isaac", ["package.xml"]),
         ("share/xlerobot_isaac/scripts", ["scripts/run_isaac.py", "scripts/run_isaac.sh"]),
+        ("share/xlerobot_isaac/textures", glob("textures/*")),
     ],
     install_requires=["setuptools"],
     zip_safe=True,

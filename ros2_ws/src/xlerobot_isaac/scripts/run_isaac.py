@@ -9,6 +9,7 @@ import argparse
 import json
 from pathlib import Path
 import signal
+import tempfile
 import time
 import traceback
 
@@ -249,11 +250,20 @@ def create_control_graph(og, namespace, controllers):
 def main():
     args = parse_args()
     from isaacsim import SimulationApp
+    import yaml
 
     app = SimulationApp({"headless": args.headless, "shutdown_watchdog_timeout": 10.0})
     exit_code = 0
     pose_publisher = None
+    controller_config = tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", prefix="xlerobot-isaac-")
     try:
+        # Isaac's continuous wheel positions wrap. Differencing those angles
+        # creates false distance/heading jumps at each wrap. Integrate measured
+        # wheel velocities in this backend; retain encoder feedback on hardware.
+        controllers = yaml.safe_load(args.controllers.read_text())
+        controllers["/**/base_controller"]["ros__parameters"]["position_feedback"] = False
+        yaml.safe_dump(controllers, controller_config)
+        controller_config.flush()
         import isaacsim.core.experimental.utils.app as app_utils
         from isaacsim.core.simulation_manager import SimulationManager
         import omni.graph.core as og
@@ -304,7 +314,7 @@ def main():
                 viewport.camera_path = camera.GetPath()
         # Register graphs brought in by the USD reference before editing them.
         app.update()
-        create_control_graph(og, args.namespace, args.controllers)
+        create_control_graph(og, args.namespace, Path(controller_config.name))
         app.update()
         if not args.headless:
             show_control_graph(stage)
@@ -367,6 +377,7 @@ def main():
     finally:
         if pose_publisher is not None:
             pose_publisher.close()
+        controller_config.close()
         app.close(wait_for_replicator=False, exit_code=exit_code)
 
 

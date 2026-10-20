@@ -81,6 +81,13 @@ The spawner only loads, configures, and activates controllers; it avoids startup
 parameter writes that can wait indefinitely after a lost DDS response. Wait for
 the `Robot controllers ready` launch message before sending motion commands.
 
+Isaac overrides `base_controller.position_feedback` to `false` in a temporary
+copy of the controller configuration. Its raw continuous wheel positions wrap
+by approximately 4π; position differencing otherwise produces false odometry
+jumps (observed: 0.35 m and 1.77 rad in one update). The simulator now integrates
+measured wheel velocities with `open_loop: false`. Hardware and mock retain the
+shared encoder-position configuration.
+
 GUI launches open `/World/ROS2Control` in the Action Graph editor. It contains the
 native controller manager and the clock publisher. The saved
 `/World/xlerobot/Graphs/cmd_vel` graph is inactive in the composed stage so it
@@ -192,6 +199,17 @@ Nav2, nvblox, and Isaac ROS cuVSLAM in RGBD mode. It adds a small room with boxe
 estimates motion from the D455 images, reconstructs obstacles from depth, and
 accepts goals from RViz. No saved map is required.
 
+The room uses matte painted-brick walls and a worn-concrete floor, with locally
+packaged albedo textures in `src/xlerobot_isaac/textures/`. Their generation
+prompts and provenance are in `textures/prompts.json`. Textures use physical
+scale and different offsets on opposing walls; existing colliders and friction
+are unchanged. Visual detail matters: cuVSLAM must track features across images,
+even in RGBD mode. Blank surfaces can drift while tracking status still reports
+success. A controlled rotation-and-forward comparison measured 0.325 m peak
+visual position error with blank surfaces versus 0.015 m with these textures,
+using the same velocity-feedback configuration and independent simulator poses.
+These are short simulation measurements, not a general accuracy guarantee.
+
 Install the optional dependencies (rerun if upgrading the older ground-truth
 navigation setup), then build and launch from `ros2_ws/`:
 
@@ -301,8 +319,10 @@ python3 scripts/test_navigation.py
 It uses domain 96, namespace `xlerobot_test`, and a headless simulation. It checks
 reconstruction, a planned drive to a visible goal, localization error against
 independent simulator measurements, rejection of a goal inside a box, a turn
-in place, and cancellation. It also verifies that only the test observer
-subscribes to simulator ground truth in cuVSLAM mode.
+in place, and cancellation. It then performs a measured full 360-degree turn,
+checks timestamp-aligned visual pose errors throughout the turn, and rejects
+wheel-odometry discontinuities as the raw wheel angles wrap. It also verifies
+that only the test observer subscribes to simulator ground truth in cuVSLAM mode.
 Before driving it checks stationary drift and visual frame intervals for 15
 simulation seconds. Use `--idle-seconds 90` for the longer drift regression.
 Use `--localization ground_truth` to exercise the debugging mode.
@@ -310,10 +330,13 @@ Launch output is in `log/navigation-test.log`. Add
 `--gui` to show Isaac, `--rviz` to show the goal interface, or `--domain-id N`
 to choose another unused domain.
 
-cuVSLAM validated on 2026-10-20 with the RTX 5080 host: 0.88 m of measured travel,
-0.090 m goal error, 0.090 m visual localization error, rejection of an occupied
-goal, a 0.5 rad turn with 0.122 rad final heading error, and cancellation passed.
-The ground-truth regression also passed (0.84 m travel, 0.116 m goal error).
+cuVSLAM validated on 2026-10-20 with textures and velocity feedback on the RTX
+5080 host: 0.788 m of measured travel, 0.173 m goal error, 0.016 m visual
+localization error, rejection of an occupied goal, a 0.5 rad turn with 0.127 rad
+final heading error, and cancellation passed. The full 360-degree regression
+passed with maximum visual error 0.023 m and 0.003 rad, and continuous wheel
+odometry across four raw wheel-angle wraps. Ten navigation/Isaac unit tests passed.
+The earlier ground-truth regression passed (0.84 m travel, 0.116 m goal error).
 Per-mode test logs are saved as `log/navigation-cuvslam-test.log` and
 `log/navigation-ground_truth-test.log` after each run. These are short simulation
 acceptance checks; physical-camera performance and long-route drift are not yet

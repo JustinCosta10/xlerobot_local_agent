@@ -1,0 +1,14 @@
+{
+  "generator": "Built-in image_gen tool",
+  "date": "2026-10-20",
+  "assets": [
+    {
+      "file": "painted_brick_albedo.png",
+      "prompt": "Use case: photorealistic-natural. Asset type: seamless square diffuse/albedo texture for the walls of an Isaac Sim robotics workshop. Physically plausible pale warm-gray painted brick masonry, straight-on orthographic view, horizontal staggered courses. Fine granular matte paint, slightly irregular mortar edges, subtle worn patches and distinct random brick-to-brick variation, with middle-scale detail for visual feature tracking. Entire image approximately eight courses of brickwork, no perspective or surroundings. Uniform diffuse illumination, no baked directional shadows, no highlights, no vignette, no text, no watermark, no border. Tile seamlessly on all four edges. 1024 by 1024 texture."
+    },
+    {
+      "file": "worn_concrete_albedo.png",
+      "prompt": "Use case: photorealistic-natural. Asset type: seamless square diffuse/albedo texture for the floor of an Isaac Sim robotics workshop. Physically plausible medium-gray worn concrete floor, orthographic view directly overhead. Fine aggregate, scattered exposed darker stones, irregular light worn patches, subtle scuffs and occasional thin hairline cracks, random natural detail at several scales for visual feature tracking. Represents a 2 meter by 2 meter floor patch. Dry matte surface, neutral slightly warm gray, convincingly photographed material. Uniform diffuse illumination, no baked directional shadows, no reflections, no vignette, no perspective, no objects, no text, no watermark, no border. Tile seamlessly on all four edges. 1024 by 1024 texture."
+    }
+  ]
+}
