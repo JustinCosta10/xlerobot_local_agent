@@ -19,7 +19,7 @@ _xlerobot_deps="$_xlerobot_ws/.deps/root"
 _xlerobot_prefix="$_xlerobot_deps/opt/ros/jazzy"
 if [[ -d "$_xlerobot_prefix" ]]; then
     export AMENT_PREFIX_PATH="$_xlerobot_prefix${AMENT_PREFIX_PATH:+:$AMENT_PREFIX_PATH}"
-    export CMAKE_PREFIX_PATH="$_xlerobot_prefix${CMAKE_PREFIX_PATH:+:$CMAKE_PREFIX_PATH}"
+    export CMAKE_PREFIX_PATH="$_xlerobot_prefix:$_xlerobot_deps/usr${CMAKE_PREFIX_PATH:+:$CMAKE_PREFIX_PATH}"
     export LD_LIBRARY_PATH="$_xlerobot_prefix/lib:$_xlerobot_deps/usr/lib/x86_64-linux-gnu${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
     export LIBRARY_PATH="$_xlerobot_prefix/lib:$_xlerobot_deps/usr/lib/x86_64-linux-gnu${LIBRARY_PATH:+:$LIBRARY_PATH}"
     export PYTHONPATH="$_xlerobot_prefix/lib/python3.12/site-packages:$_xlerobot_deps/usr/lib/python3/dist-packages${PYTHONPATH:+:$PYTHONPATH}"

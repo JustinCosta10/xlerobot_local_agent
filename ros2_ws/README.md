@@ -130,6 +130,10 @@ Ctrl+C stops publishing. The differential-drive controller stops after 0.5
 seconds without a fresh command; the adapter never repeats old commands. The
 direct `/xlerobot/cmd_vel` stamped input remains available for applications that
 already use the backend's clock. Run one driving publisher at a time.
+The shared `xlerobot_control/DiffDriveController` extends the upstream controller
+to emit `Velocity command timed out. Braking.` once per timeout episode. It
+continues braking throughout the timeout; fresh valid commands rearm the warning
+for the next timeout. An initial idle timeout also produces only one warning.
 The controller uses the model's 0.0635 m wheel radius and 0.45 m wheel separation.
 Initial speed/acceleration limits
 are deliberately low and can be changed in the shared controller configuration.
@@ -308,7 +312,7 @@ need validation on your robot. The incomplete template fails before opening port
 | Package | Responsibility |
 | --- | --- |
 | `xlerobot_description` | Generated URDF, model joint limits, portable mesh references |
-| `xlerobot_control` | C++ TopicSystem hardware plugin and shared controller configuration |
+| `xlerobot_control` | C++ TopicSystem hardware plugin, differential-drive timeout logging, and shared controller configuration |
 | `xlerobot_isaac` | Isaac scene composition, native controller manager, sensors, clock |
 | `xlerobot_hardware` | Calibration validation, serial SDK adapter, command watchdog |
 | `xlerobot_diagnostics` | Shared interface monitor and passive check |

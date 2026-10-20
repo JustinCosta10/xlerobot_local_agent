@@ -5,12 +5,14 @@
   <maintainer email="justin@example.com">Justin</maintainer><license>Proprietary</license>
   <buildtool_depend>ament_cmake</buildtool_depend>
   <depend>hardware_interface</depend><depend>pluginlib</depend>
+  <depend>controller_interface</depend><depend version_gte="4.42.1">diff_drive_controller</depend>
   <depend>rclcpp</depend><depend>rclcpp_lifecycle</depend><depend>sensor_msgs</depend>
   <exec_depend>controller_manager</exec_depend><exec_depend>joint_state_broadcaster</exec_depend>
-  <exec_depend>joint_trajectory_controller</exec_depend><exec_depend>diff_drive_controller</exec_depend>
+  <exec_depend>joint_trajectory_controller</exec_depend>
   <exec_depend>rclpy</exec_depend><exec_depend>geometry_msgs</exec_depend>
   <test_depend>ament_cmake_pytest</test_depend>
   <test_depend>xlerobot_description</test_depend><test_depend>std_msgs</test_depend>
   <test_depend>controller_manager_msgs</test_depend><test_depend>ament_index_python</test_depend>
+  <test_depend>nav_msgs</test_depend>
   <export><build_type>ament_cmake</build_type></export>
 </package>

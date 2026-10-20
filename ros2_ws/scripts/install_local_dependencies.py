@@ -64,7 +64,7 @@ def relocate(root):
             return str(candidate) if candidate.exists() else match.group(0)
         path.write_text(re.sub(r"(?<![A-Za-z0-9_/])/opt/ros/jazzy/[A-Za-z0-9_./+-]+", local_path, path.read_text()))
     exports = {
-        "AMENT_PREFIX_PATH": str(prefix), "CMAKE_PREFIX_PATH": str(prefix),
+        "AMENT_PREFIX_PATH": str(prefix), "CMAKE_PREFIX_PATH": f"{prefix}:{root}/usr",
         "LD_LIBRARY_PATH": f"{prefix}/lib:{root}/usr/lib/x86_64-linux-gnu",
         "LIBRARY_PATH": f"{prefix}/lib:{root}/usr/lib/x86_64-linux-gnu",
         "PYTHONPATH": f"{prefix}/lib/python3.12/site-packages:{root}/usr/lib/python3/dist-packages",

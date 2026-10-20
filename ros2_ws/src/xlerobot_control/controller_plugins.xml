@@ -1,0 +1,7 @@
+<library path="xlerobot_diff_drive_controller">
+  <class name="xlerobot_control/DiffDriveController"
+         type="xlerobot_control::DiffDriveController"
+         base_class_type="controller_interface::ChainableControllerInterface">
+    <description>Upstream differential drive controller with one warning per command timeout.</description>
+  </class>
+</library>
