@@ -118,6 +118,8 @@ ros2 action send_goal /xlerobot/head_controller/follow_joint_trajectory \
 ```
 
 The original global `/cmd_vel` input accepts plain `geometry_msgs/msg/Twist`.
+For keyboard driving with `teleop_twist_keyboard`, use the command and key bindings
+in [`TELEOP.md`](../TELEOP.md).
 Launch automatically stamps each received command using the selected backend's
 clock and forwards it to `/xlerobot/cmd_vel`. With Isaac playing, use the original
 command format; no timestamp or simulation-time flag is needed:
@@ -135,8 +137,9 @@ to emit `Velocity command timed out. Braking.` once per timeout episode. It
 continues braking throughout the timeout; fresh valid commands rearm the warning
 for the next timeout. An initial idle timeout also produces only one warning.
 The controller uses the model's 0.0635 m wheel radius and 0.45 m wheel separation.
-Initial speed/acceleration limits
-are deliberately low and can be changed in the shared controller configuration.
+The base velocity caps use XLeRobot's slow preset: 0.10 m/s and 30 degrees/s
+(0.523599 rad/s). Initial acceleration limits remain deliberately low. These
+settings can be changed in the shared controller configuration.
 
 After sourcing `scripts/env.sh`, use `pub LINEAR ANGULAR` for manual commands
 while Isaac is playing. The angular speed defaults to zero:
@@ -231,7 +234,8 @@ observed map. Run one driving source at a time. Goals use
 Use `headless:=true` to hide Isaac's window and `rviz:=false` to disable RViz.
 `namespace` and `foxglove` work as in the basic robot launch. All navigation
 nodes use simulation time. The planner is Smac 2D and the path follower is
-Regulated Pure Pursuit, limited to the base's 0.10 m/s and 0.20 rad/s settings.
+Regulated Pure Pursuit; the navigation guard limits autonomous commands to
+0.10 m/s and 0.20 rad/s.
 Configuration is in [`xlerobot_navigation/config/`](src/xlerobot_navigation/config/).
 
 Isaac publishes the measured axle pose on `sim_ground_truth`. A simulation-only

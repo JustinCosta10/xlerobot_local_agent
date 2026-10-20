@@ -22,6 +22,11 @@ robot computer's IP). Add `foxglove:=false` to launch without it.
 Manual `cmd_vel` driving now moves the robot in Isaac Sim, confirmed by the user.
 See [validation status](ros2_ws/README.md#validation) for automated test coverage.
 
+For keyboard driving with the standard ROS 2 teleop node, see
+[`TELEOP.md`](TELEOP.md) for the copy-and-paste command and key bindings.
+The [speed and turning-radius reference](SPEEDS_AND_TURN_RADIUS.md) records source
+links, calculations, and the selected slow preset.
+
 For clicked-goal navigation with live depth mapping, see the
 [Nav2 + nvblox simulation setup](ros2_ws/README.md#clicked-goal-navigation-with-live-nvblox-mapping).
 
