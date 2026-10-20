@@ -5,10 +5,12 @@ Uses the host's configured apt repositories and package versions. Source env.sh
 afterwards. Prefer normal rosdep/apt installation on deployment machines.
 """
 
+import argparse
 from pathlib import Path
 import re
 import shlex
 import subprocess
+import urllib.request
 
 PACKAGES = [
     "ros-jazzy-controller-manager", "ros-jazzy-joint-state-broadcaster",
@@ -16,6 +18,39 @@ PACKAGES = [
     "ros-jazzy-xacro", "ros-jazzy-urdfdom-py",
     "ros-jazzy-foxglove-bridge", "ros-jazzy-launch-xml",
 ]
+
+NAVIGATION_PACKAGES = [
+    "ros-jazzy-nav2-bt-navigator", "ros-jazzy-nav2-controller",
+    "ros-jazzy-nav2-planner", "ros-jazzy-nav2-behaviors",
+    "ros-jazzy-nav2-lifecycle-manager", "ros-jazzy-nav2-smac-planner",
+    "ros-jazzy-nav2-regulated-pure-pursuit-controller", "ros-jazzy-nav2-rviz-plugins",
+    "ros-jazzy-nvblox-ros", "ros-jazzy-nvblox-nav2",
+    "ros-jazzy-nvblox-rviz-plugin", "cuda-cudart-13-0", "cuda-nvrtc-13-0",
+    "libcublas-13-0",
+]
+
+
+def navigation_sources(directory):
+    """Keep NVIDIA repository configuration and keys inside the workspace."""
+    sources = []
+    for name, key_url, repository, suite in (
+        ("isaac", "https://isaac.download.nvidia.com/isaac-ros/repos.key",
+         "https://isaac.download.nvidia.com/isaac-ros/release-4.3", "noble main"),
+        ("cuda", "https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/3bf863cc.pub",
+         "https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/", "/"),
+        ("vpi", "https://repo.download.nvidia.com/jetson/jetson-ota-public.asc",
+         "https://repo.download.nvidia.com/jetson/x86_64/noble", "r38.4 main"),
+    ):
+        key = directory / f"{name}.gpg"
+        with urllib.request.urlopen(key_url, timeout=60) as response:
+            armored = response.read()
+        result = subprocess.run(["gpg", "--dearmor"], input=armored,
+                                stdout=subprocess.PIPE, check=True)
+        key.write_bytes(result.stdout)
+        sources.append(f"deb [signed-by={key}] {repository} {suite}\n")
+    source_file = directory / "navigation.list"
+    source_file.write_text("".join(sources))
+    return ["-o", f"Dir::Etc::sourcelist={source_file}"]
 
 
 def relocate(root):
@@ -43,6 +78,10 @@ def relocate(root):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--navigation", action="store_true",
+                        help="Also install Nav2, pinned Isaac ROS 4.3 nvblox, and CUDA 13 runtime libraries")
+    args = parser.parse_args()
     directory = Path(__file__).resolve().parents[1] / ".deps"
     downloads = directory / "debs"
     root = directory / "root"
@@ -51,9 +90,19 @@ def main():
     (directory / "COLCON_IGNORE").touch()
     lists = directory / "apt/lists"
     (lists / "partial").mkdir(parents=True, exist_ok=True)
-    options = ["-o", f"Dir::State::lists={lists}", "-o", "Debug::NoLocking=1"]
+    options = ["-o", f"Dir::State::lists={lists}", "-o", "Debug::NoLocking=1",
+               "-o", f"Dir::Cache={directory / 'apt/cache'}"]
+    requested = list(PACKAGES)
+    if args.navigation:
+        options += navigation_sources(directory / "apt")
+        requested += NAVIGATION_PACKAGES
     subprocess.run(["apt-get", *options, "update"], check=True)
-    plan = subprocess.check_output(["apt-get", *options, "-s", "install", *PACKAGES], text=True)
+    result = subprocess.run(["apt-get", *options, "--no-install-recommends", "-s", "install", *requested],
+                            text=True, stdout=subprocess.PIPE)
+    plan = result.stdout
+    if result.returncode:
+        print(plan, flush=True)
+        result.check_returncode()
     packages = [line.split()[1] for line in plan.splitlines() if line.startswith("Inst ")]
     if packages:
         subprocess.run(["apt", *options, "download", *packages], cwd=downloads, check=True)

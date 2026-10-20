@@ -29,6 +29,8 @@ def parse_args():
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--sensors", action="store_true",
                         help="load the D455 and enable its camera/TF publishing graph")
+    parser.add_argument("--navigation-scene", action="store_true",
+                        help="add obstacles and publish ground-truth poses for simulated navigation")
     parser.add_argument("--namespace", default="xlerobot")
     parser.add_argument("--max-steps", type=int, default=0,
                         help="exit after this many updates; 0 runs until interrupted")
@@ -228,6 +230,7 @@ def main():
 
     app = SimulationApp({"headless": args.headless, "shutdown_watchdog_timeout": 10.0})
     exit_code = 0
+    pose_publisher = None
     try:
         import isaacsim.core.experimental.utils.app as app_utils
         from isaacsim.core.simulation_manager import SimulationManager
@@ -263,6 +266,9 @@ def main():
         ground.AddTranslateOp().Set(Gf.Vec3d(0, 0, -0.05))
         ground.AddScaleOp().Set(Gf.Vec3d(20, 20, 0.1))
         UsdPhysics.CollisionAPI.Apply(ground.GetPrim())
+        if args.navigation_scene:
+            from xlerobot_isaac.navigation_scene import add_navigation_obstacles
+            add_navigation_obstacles(stage)
         light = UsdLux.DomeLight.Define(stage, "/World/Light")
         light.CreateIntensityAttr(1000.0)
         if not args.headless:
@@ -283,6 +289,9 @@ def main():
         SimulationManager.setup_simulation(dt=1.0 / 60.0, device="cpu")
         app_utils.play()
         running = True
+        if args.navigation_scene:
+            from xlerobot_isaac.navigation_scene import GroundTruthPublisher
+            pose_publisher = GroundTruthPublisher(args.namespace, args.description)
 
         def stop(*_):
             nonlocal running
@@ -299,6 +308,11 @@ def main():
             started = time.monotonic()
             app.update()
             step += 1
+            if pose_publisher and SimulationManager.get_simulation_time() > 0:
+                if state_view is None:
+                    state_view = SimulationManager.get_physics_simulation_view().create_articulation_view(root_path)
+                pose_publisher.publish(state_view.get_root_transforms().numpy()[0],
+                                       SimulationManager.get_simulation_time())
             if args.state_log and step % 15 == 0 and SimulationManager.get_simulation_time() > 0:
                 if state_view is None:
                     state_view = SimulationManager.get_physics_simulation_view().create_articulation_view(root_path)
@@ -323,6 +337,8 @@ def main():
         exit_code = 1
         traceback.print_exc()
     finally:
+        if pose_publisher is not None:
+            pose_publisher.close()
         app.close(wait_for_replicator=False, exit_code=exit_code)
 
 

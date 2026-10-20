@@ -51,6 +51,8 @@ def setup(context):
                    "--description", str(description_share / "urdf/kinematics.urdf"),
                    "--controllers", controllers]
         command += [f"--{option}" for option in ("headless", "sensors") if value(option) == "true"]
+        if value("navigation_scene") == "true":
+            command.append("--navigation-scene")
         if value("state_log"):
             command += ["--state-log", value("state_log")]
         critical(ExecuteProcess(cmd=command, output="screen", sigterm_timeout="20",
@@ -87,7 +89,7 @@ def setup(context):
                               "head_controller", "gripper_controller", "base_controller",
                               "-c", f"/{namespace}/controller_manager",
                               "--activate-as-group", "--controller-manager-timeout", "150",
-                              "--service-call-timeout", "150", "--switch-timeout", "30"],
+                              "--service-call-timeout", value("controller_service_timeout"), "--switch-timeout", "30"],
                    output="screen")
 
     def check_spawn(event, _context):
@@ -129,6 +131,10 @@ def generate_launch_description():
         DeclareLaunchArgument("headless", default_value="false", choices=["true", "false"]),
         DeclareLaunchArgument("sensors", default_value="true", choices=["true", "false"],
                               description="Load the D455 and camera publishing graph; false excludes both"),
+        DeclareLaunchArgument("navigation_scene", default_value="false", choices=["true", "false"],
+                              description="Add navigation obstacles and publish Isaac ground-truth base poses"),
+        DeclareLaunchArgument("controller_service_timeout", default_value="150",
+                              description="Seconds before retrying a controller-manager service request"),
         DeclareLaunchArgument("foxglove", default_value="true", choices=["true", "false"],
                               description="Start Foxglove Bridge for ROS visualization"),
         DeclareLaunchArgument("foxglove_address", default_value="0.0.0.0",

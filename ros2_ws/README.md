@@ -162,7 +162,8 @@ Global interfaces are `/cmd_vel` (plain `Twist`), `/tf`, `/tf_static`,
   Fixed links use `/tf_static`; articulated links use `/tf`.
 
 This workspace supports one robot per ROS domain. Topic namespaces do not prefix
-TF frames. There is no `map` frame or localization node yet.
+TF frames. The basic robot launch provides odometry; the optional navigation
+launch below adds the `map` frame and simulation localization.
 
 Hardware transport topics are `backend/joint_states`, `backend/position_command`,
 and `backend/velocity_command` under the robot namespace. Applications use the
@@ -176,6 +177,92 @@ A fault requires explicit lifecycle recovery or relaunch. Hardware diagnostics
 check raw transport feedback separately from the public broadcaster. Isaac
 uses native plugin feedback through its joint-state broadcaster. Diagnostic
 freshness uses wall time, including when simulation time stops.
+
+## Clicked-goal navigation with live nvblox mapping
+
+The simulation navigation launch combines the existing robot interface with
+Nav2 and nvblox. It adds a small room with boxes, reconstructs obstacles from the
+D455 depth camera, and accepts goals from RViz. No saved map is required.
+
+Install the optional dependencies once, then build and launch from `ros2_ws/`:
+
+```bash
+python3 scripts/install_local_dependencies.py --navigation
+./scripts/build.sh
+source scripts/env.sh
+ros2 launch xlerobot_navigation sim_navigation.launch.py
+```
+
+For later sessions, only source `scripts/env.sh` and run the launch command;
+the dependencies, configuration, and built packages remain in the workspace.
+This launch includes the robot and Isaac, so stop any previous robot or
+navigation launch before starting it. Use Ctrl+C in the launch terminal to stop
+the session.
+
+The installer extracts signed repository packages into `.deps/root` and keeps
+repository configuration under `.deps/apt`; it does not install system packages
+or change the graphics driver. This x86 Ubuntu 24.04/Jazzy setup pins NVIDIA's
+Isaac ROS 4.3 repository and uses CUDA 13.0 libraries with the host's 580-series
+driver. NVIDIA's package dependencies also pull the CUDA toolkit; allow several
+GB for downloads and additional space for extraction. This installer is for the
+simulation workstation, not a Jetson deployment recipe.
+
+Wait for `Live depth map ready; activating Nav2` and for the Navigation 2 panel
+to show navigation as active. Choose **Nav2 Goal**, then click and drag in mapped
+free space to set the destination and final heading. The robot initially faces
+world -X; a first goal near `(x=-1.1, y=0)` with the arrow pointing toward -X is
+in front of it. The colored mesh shows reconstruction, the costmap shows
+obstacle clearance, and the green line shows the planned path. Unknown space
+remains unknown and the planner rejects routes through it.
+
+The panel's **Localization: inactive** indicator is expected: it monitors
+Nav2's managed localization stack, while this simulation uses Isaac's measured
+pose. No **2D Pose Estimate** or saved occupancy map is needed.
+
+Use the Navigation 2 panel's **Cancel** button to stop a goal. Cancel navigation
+before using manual `pub` or `/cmd_vel` commands to look around and expand the
+observed map. Run one driving source at a time. Goals use
+`/xlerobot/navigate_to_pose` (`nav2_msgs/action/NavigateToPose`).
+
+Use `headless:=true` to hide Isaac's window and `rviz:=false` to disable RViz.
+`namespace` and `foxglove` work as in the basic robot launch. All navigation
+nodes use simulation time. The planner is Smac 2D and the path follower is
+Regulated Pure Pursuit, limited to the base's 0.10 m/s and 0.20 rad/s settings.
+Configuration is in [`xlerobot_navigation/config/`](src/xlerobot_navigation/config/).
+
+Isaac publishes the measured axle pose on `sim_ground_truth`. A simulation-only
+localization node derives `map -> odom` from that measurement and same-time wheel
+odometry. The drive controller still owns `odom -> base_link`, and the shared
+robot description owns the camera's articulated mount. `map` is aligned with the
+Isaac world, with its floor at Z=0. nvblox integrates timestamped camera poses
+and projects obstacles between 0.08 m and 1.4 m into the navigation costmaps.
+Both costmaps use `map`; the local one rolls with the robot. This avoids passing
+the axle-to-floor height offset through nvblox's planar costmap transform.
+
+Autonomous velocities pass through a guard that stops on stale depth, map, pose,
+or command data, including a paused simulation clock. Mapping starts afresh with
+each launch, assumes a static scene, and clears reconstruction beyond 8 m of the
+robot. This milestone uses a fixed driving posture and simulated localization;
+physical localization, map persistence, and dynamic-object reconstruction are
+separate work.
+
+Run the isolated GPU acceptance test without opening physical motor ports:
+
+```bash
+source scripts/env.sh
+python3 scripts/test_navigation.py
+```
+
+It uses domain 96, namespace `xlerobot_test`, and a headless simulation. It checks
+reconstruction, a planned drive to a visible goal, rejection of a goal inside a
+box, and cancellation. Launch output is in `log/navigation-test.log`. Add
+`--gui` to show Isaac, `--rviz` to show the goal interface, or `--domain-id N`
+to choose another unused domain.
+
+Validated on 2026-10-20 with the RTX 5080 host: live nvblox reconstruction,
+0.83 m of actual simulated body travel with 0.119 m endpoint error, rejection
+of a goal inside the center box, and cancellation all passed. The RViz run
+loaded the robot, map, path, mesh, and Nav2 panel without plugin-load errors.
 
 ## Physical robot configuration
 
@@ -226,6 +313,7 @@ need validation on your robot. The incomplete template fails before opening port
 | `xlerobot_hardware` | Calibration validation, serial SDK adapter, command watchdog |
 | `xlerobot_diagnostics` | Shared interface monitor and passive check |
 | `xlerobot_bringup` | Backend selection, controller startup, TF, diagnostics, optional RViz |
+| `xlerobot_navigation` | Nav2, nvblox, simulated localization, clicked goals, and navigation command guard |
 
 The selected model is `../xlerobot_isaac_sim/xlerobot_dd.usd`: the recovered
 XLeRobot with detailed 5-inch tires, printed hubs, rear-only caster meshes,

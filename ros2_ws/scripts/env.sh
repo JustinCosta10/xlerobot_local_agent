@@ -25,6 +25,19 @@ if [[ -d "$_xlerobot_prefix" ]]; then
     export PYTHONPATH="$_xlerobot_prefix/lib/python3.12/site-packages:$_xlerobot_deps/usr/lib/python3/dist-packages${PYTHONPATH:+:$PYTHONPATH}"
     export PATH="$_xlerobot_prefix/bin:$PATH"
 fi
+# NVIDIA dependencies are extracted locally as well. Never add CUDA's driver
+# stubs: libcuda must resolve to the actual host graphics driver.
+for _xlerobot_lib in \
+    "$_xlerobot_deps/usr/local/cuda-13.0/targets/x86_64-linux/lib" \
+    "$_xlerobot_deps/opt/nvidia/vpi4/lib/x86_64-linux-gnu" \
+    "$_xlerobot_prefix/lib/x86_64-linux-gnu" \
+    "$_xlerobot_prefix"/share/*/gxf/lib \
+    "$_xlerobot_prefix"/share/isaac_ros_gxf/gxf/lib/*; do
+    if [[ -d "$_xlerobot_lib" ]]; then
+        export LD_LIBRARY_PATH="$_xlerobot_lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    fi
+done
+unset _xlerobot_lib
 if [[ -f "$_xlerobot_ws/install/local_setup.bash" ]]; then
     source "$_xlerobot_ws/install/local_setup.bash"
 fi

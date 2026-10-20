@@ -22,5 +22,8 @@ robot computer's IP). Add `foxglove:=false` to launch without it.
 Manual `cmd_vel` driving now moves the robot in Isaac Sim, confirmed by the user.
 See [validation status](ros2_ws/README.md#validation) for automated test coverage.
 
+For clicked-goal navigation with live depth mapping, see the
+[Nav2 + nvblox simulation setup](ros2_ws/README.md#clicked-goal-navigation-with-live-nvblox-mapping).
+
 Use `backend:=mock` for testing without a GPU or motors. See the workspace
 README for hardware calibration, public interfaces, and known limitations.
