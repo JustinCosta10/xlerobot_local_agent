@@ -22,7 +22,35 @@ from nav_msgs.msg import Odometry, Path as NavPath
 from nvblox_msgs.msg import DistanceMapSlice
 from rclpy.action import ActionClient
 from rclpy.parameter import Parameter
+from rcl_interfaces.srv import SetParameters
 from sensor_msgs.msg import JointState
+
+
+def check_wheel_feedback(messages, label):
+    """Compare native velocity feedback with encoder displacement, including wraps."""
+    # Clock publishing can stamp two physics updates identically. Retain the
+    # last joint sample at each stamp before integrating measured velocities.
+    unique = {m.header.stamp.sec + m.header.stamp.nanosec * 1e-9: m for m in messages}
+    times = sorted(unique)
+    assert len(times) > 30 and times[-1] - times[0] > 2, "Insufficient wheel feedback samples"
+    errors = []
+    for name in ("left_wheel_joint", "right_wheel_joint"):
+        positions, velocities = [], []
+        for stamp in times:
+            message = unique[stamp]
+            index = message.name.index(name)
+            positions.append(message.position[index])
+            velocities.append(message.velocity[index])
+        # Both 2pi and Isaac's 4pi angle wraps leave the physical increment intact.
+        delta = np.diff(positions)
+        displacement = np.arctan2(np.sin(delta), np.cos(delta)).sum()
+        velocity_integral = sum(.5 * (a+b) * dt for a,b,dt in
+                                zip(velocities, velocities[1:], np.diff(times)))
+        error = abs(velocity_integral-displacement) / (times[-1]-times[0])
+        errors.append(error)
+        assert error < .03, f"{label}: {name} velocity/encoder disagreement {error:.4f} rad/s"
+    print(f"PASS: {label} wheel velocity agrees with encoder motion; "
+          f"maximum mean error {max(errors):.4f} rad/s", flush=True)
 
 
 def check(process, localization, idle_seconds):
@@ -99,6 +127,18 @@ def check(process, localization, idle_seconds):
         assert handle.accepted, "Nav2 rejected the action request"
         return handle
 
+    def turn_speed(speed):
+        setter = node.create_client(SetParameters, "/xlerobot_test/controller_server/set_parameters")
+        try:
+            wait(setter.service_is_ready, 10, "controller parameter service")
+            request = SetParameters.Request(parameters=[Parameter(
+                "FollowPath.rotate_to_heading_angular_vel", value=speed).to_parameter_msg()])
+            future = setter.call_async(request)
+            wait(future.done, 10, "set isolated test turn speed")
+            assert all(r.successful for r in future.result().results), future.result()
+        finally:
+            node.destroy_client(setter)
+
     try:
         wait(lambda: data.get("active") and client.server_is_ready()
              and all(k in data for k in ("pose", "estimate", "slice", "odom")),
@@ -116,6 +156,7 @@ def check(process, localization, idle_seconds):
             print("PASS: cuVSLAM localization ready; ground truth only consumed by test observer", flush=True)
             idle_start = node.get_clock().now().nanoseconds * 1e-9
             idle_pose = data["estimate"].pose.position
+            turn_samples = {key: [] for key in ("pose", "estimate", "odom", "joints")}
             pose_stamps.clear()
             wait(lambda: node.get_clock().now().nanoseconds * 1e-9 >= idle_start + idle_seconds,
                  max(60, idle_seconds * 6), "stationary visual tracking")
@@ -130,6 +171,13 @@ def check(process, localization, idle_seconds):
                   f"p95 {p95:.1f}, max {max(deltas):.1f} ms", flush=True)
             assert drift < .10, f"Stationary visual drift: {drift:.3f} m"
             assert p95 <= 50, f"Visual frames exceed the 50 ms threshold: p95 {p95:.1f} ms"
+            stationary, turn_samples = turn_samples, None
+            check_wheel_feedback(stationary["joints"], "Stationary")
+            mean_v = statistics.mean(m.twist.twist.linear.x for m in stationary["odom"])
+            mean_w = statistics.mean(m.twist.twist.angular.z for m in stationary["odom"])
+            assert abs(mean_v) < .003 and abs(mean_w) < .005, \
+                f"Stationary odometry bias: {mean_v:.4f} m/s, {mean_w:.4f} rad/s"
+            print(f"PASS: stationary odometry bias {mean_v:.4f} m/s, {mean_w:.4f} rad/s", flush=True)
         distances = data["slice"]
         assert distances.header.frame_id == "map"
         known = [d for d in distances.data if d != distances.unknown_value and math.isfinite(d)]
@@ -158,15 +206,44 @@ def check(process, localization, idle_seconds):
         wait(blocked.done, 30, "reject occupied goal")
         assert blocked.result().status == GoalStatus.STATUS_ABORTED, blocked.result()
         print("PASS: goal inside obstacle aborted", flush=True)
-        turn_heading = math.pi + 0.5
-        turned = goal(finish.x, finish.y, turn_heading).get_result_async()
-        wait(turned.done, 120, "turn in place")
-        assert turned.result().status == GoalStatus.STATUS_SUCCEEDED, turned.result()
-        turn_error = abs(math.atan2(math.sin(yaw(data["pose"].pose) - turn_heading),
-                                    math.cos(yaw(data["pose"].pose) - turn_heading)))
-        assert turn_error < .25, f"Actual heading error: {turn_error:.3f} rad"
-        print(f"PASS: turn in place; actual heading error {turn_error:.3f} rad", flush=True)
-        handle = goal(-0.3, 0.0, 0.0)
+        # Exercise both signs and a long turn; the old small positive turn missed
+        # biased wheel feedback that trapped the controller's acceleration limit.
+        for offset in (math.pi / 2, -1.0):
+            turn_heading = math.pi + offset
+            # The negative turn deliberately exceeds the 30-second translation
+            # timeout, proving that angular progress keeps the goal alive.
+            slow_turn = offset < 0
+            turn_speed(.06 if slow_turn else .15)
+            turn_samples = {key: [] for key in ("pose", "estimate", "odom", "joints")}
+            started_turn = time.monotonic()
+            started_sim = node.get_clock().now().nanoseconds * 1e-9
+            turned = goal(finish.x, finish.y, turn_heading).get_result_async()
+            wait(turned.done, 180, "turn in place")
+            assert turned.result().status == GoalStatus.STATUS_SUCCEEDED, turned.result()
+            if slow_turn:
+                assert node.get_clock().now().nanoseconds * 1e-9 - started_sim > 30, \
+                    "Slow turn did not exercise the progress timeout"
+            samples, turn_samples = turn_samples, None
+            check_wheel_feedback(samples["joints"], f"Turn to {offset:+.2f} rad")
+            turn_error = abs(math.atan2(math.sin(yaw(data["pose"].pose) - turn_heading),
+                                        math.cos(yaw(data["pose"].pose) - turn_heading)))
+            assert turn_error < .25, f"Actual heading error: {turn_error:.3f} rad"
+            print(f"PASS: turn to {offset:+.2f} rad completed in {time.monotonic()-started_turn:.1f}s; "
+                  f"actual heading error {turn_error:.3f} rad", flush=True)
+        turn_speed(.15)
+        # From the sideways heading, require alignment followed by forward travel.
+        start = data["pose"].pose.position
+        started_sim = node.get_clock().now().nanoseconds * 1e-9
+        returned = goal(-.3, 0.0, 0.0).get_result_async()
+        wait(lambda: math.hypot(data["pose"].pose.position.x-start.x,
+                               data["pose"].pose.position.y-start.y) > .08,
+             90, "forward travel after initial alignment")
+        delay = node.get_clock().now().nanoseconds * 1e-9 - started_sim
+        assert delay < 20, f"Initial alignment delayed forward travel by {delay:.1f} sim seconds"
+        wait(returned.done, 120, "reach return goal after alignment")
+        assert returned.result().status == GoalStatus.STATUS_SUCCEEDED, returned.result()
+        print(f"PASS: aligned with path and started forward travel in {delay:.1f} sim seconds", flush=True)
+        handle = goal(-1.1, 0.0, math.pi)
         canceled = handle.cancel_goal_async()
         wait(canceled.done, 10, "cancel goal")
         result = handle.get_result_async()
@@ -209,6 +286,7 @@ def check(process, localization, idle_seconds):
         wait(lambda: node.get_clock().now().nanoseconds - stopped_at >= 3_000_000_000,
              30, "settle after full rotation")
         samples, turn_samples = turn_samples, None
+        check_wheel_feedback(samples["joints"], "Full rotation")
         assert len(samples["odom"]) > 100 and len(samples["joints"]) > 100, \
             "Insufficient wheel feedback during full rotation"
 
@@ -286,6 +364,9 @@ def main():
         ], stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
         try:
             check(process, args.localization, args.idle_seconds)
+            log.flush()
+            assert "Failed to make progress" not in log_path.read_text(), \
+                "Navigation retried after a progress failure; inspect log/navigation-test.log"
         finally:
             if process.poll() is None:
                 process.send_signal(signal.SIGINT)

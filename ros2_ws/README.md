@@ -88,6 +88,20 @@ jumps (observed: 0.35 m and 1.77 rad in one update). The simulator now integrate
 measured wheel velocities with `open_loop: false`. Hardware and mock retain the
 shared encoder-position configuration.
 
+The launch scene enables PhysX `enableExternalForcesEveryIteration` and uses
+zero TGS velocity iterations on the robot articulation, retaining its position
+iterations. NVIDIA
+documents a [TGS articulation-drive limitation](https://docs.omniverse.nvidia.com/kit/docs/omni_physics/latest/dev_guide/guides/current_limitations.html)
+where stationary joints report nonzero velocities without this setting. On this
+robot, a stalled run reported wheel velocities of 0.133 and 0.242 rad/s while
+encoder changes were approximately -0.003 rad/s. That biased wheel odometry and
+trapped Nav2's turn acceleration limiter near zero command. Applying external
+forces each solver iteration reduced the error, but the large-turn regression
+still found a velocity bias with the default one velocity iteration. Using zero
+velocity iterations as well corrected the feedback in the regression;
+odometry still uses measured wheel velocities, with no simulator ground truth
+fed into cuVSLAM navigation. This setting requires restarting Isaac.
+
 GUI launches open `/World/ROS2Control` in the Action Graph editor. It contains the
 native controller manager and the clock publisher. The saved
 `/World/xlerobot/Graphs/cmd_vel` graph is inactive in the composed stage so it
@@ -257,6 +271,10 @@ Use `headless:=true` to hide Isaac's window and `rviz:=false` to disable RViz.
 nodes use simulation time. The planner is Smac 2D and the path follower is
 Regulated Pure Pursuit; the navigation guard limits autonomous commands to
 0.10 m/s and 0.20 rad/s.
+`PoseProgressChecker` recognizes either 0.08 m of translation or 0.15 rad of
+rotation within 30 seconds. This lets the robot align with the path or final
+heading without triggering a translation-only progress timeout. The normal
+turn speed remains 0.15 rad/s, with a 0.4 rad/s² acceleration limit.
 Configuration is in [`xlerobot_navigation/config/`](src/xlerobot_navigation/config/).
 
 The default `localization:=cuvslam` uses NVIDIA's estimator with one RGB image,
@@ -318,8 +336,13 @@ python3 scripts/test_navigation.py
 
 It uses domain 96, namespace `xlerobot_test`, and a headless simulation. It checks
 reconstruction, a planned drive to a visible goal, localization error against
-independent simulator measurements, rejection of a goal inside a box, a turn
-in place, and cancellation. It then performs a measured full 360-degree turn,
+independent simulator measurements, rejection of a goal inside a box, turns
+in both directions, and cancellation. One turn uses 0.06 rad/s in the isolated
+test and lasts over 30 seconds to verify angular progress, then restores the
+normal 0.15 rad/s setting. A return goal checks timely forward travel after
+initial path alignment. The test compares reported wheel velocities with
+wrapped encoder displacement at rest and during turns, and rejects stationary
+odometry bias. It then performs a measured full 360-degree turn,
 checks timestamp-aligned visual pose errors throughout the turn, and rejects
 wheel-odometry discontinuities as the raw wheel angles wrap. It also verifies
 that only the test observer subscribes to simulator ground truth in cuVSLAM mode.
