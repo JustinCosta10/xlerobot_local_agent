@@ -274,7 +274,9 @@ Regulated Pure Pursuit; the navigation guard limits autonomous commands to
 `PoseProgressChecker` recognizes either 0.08 m of translation or 0.15 rad of
 rotation within 30 seconds. This lets the robot align with the path or final
 heading without triggering a translation-only progress timeout. The normal
-turn speed remains 0.15 rad/s, with a 0.4 rad/s² acceleration limit.
+turn speed remains 0.15 rad/s. RPP's angular acceleration setting is 1.0 rad/s²,
+allowing an initial turn request of 0.05 rad/s at 20 Hz from zero measured speed.
+The base controller retains its separate 0.4 rad/s² command acceleration limit.
 Configuration is in [`xlerobot_navigation/config/`](src/xlerobot_navigation/config/).
 
 The default `localization:=cuvslam` uses NVIDIA's estimator with one RGB image,
