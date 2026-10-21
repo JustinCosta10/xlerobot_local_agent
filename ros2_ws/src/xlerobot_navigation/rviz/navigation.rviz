@@ -30,6 +30,15 @@ Visualization Manager:
       Topic:
         Value: /__NS__/global_costmap/costmap
         Durability Policy: Transient Local
+    - Class: rviz_default_plugins/Polygon
+      Name: Cart footprint (with padding)
+      Enabled: true
+      Color: 255; 210; 40
+      Alpha: 1.0
+      Topic:
+        Value: /__NS__/local_costmap/published_footprint
+        Reliability Policy: Reliable
+        Durability Policy: Volatile
     - Class: rviz_default_plugins/Path
       Name: Planned path
       Enabled: true

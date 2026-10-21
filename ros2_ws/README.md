@@ -279,6 +279,18 @@ allowing an initial turn request of 0.05 rad/s at 20 Hz from zero measured speed
 The base controller retains its separate 0.4 rad/s² command acceleration limit.
 Configuration is in [`xlerobot_navigation/config/`](src/xlerobot_navigation/config/).
 
+Both costmaps use a cart-and-wheels footprint, excluding the articulated arms.
+Its rectangle is measured in `base_link` from the shared URDF collision shapes
+and visual meshes, including the rear caster proxies and outer wheel hubs.
+The rear caster collision bound is X = -0.355933 m, the tire front is
+X = +0.0635 m, and the outer hubs reach approximately Y = ±0.2518 m.
+Rounding outward to 1 mm gives X = [-0.356, +0.064] m and
+Y = [-0.252, +0.252] m. `footprint_padding: 0.02` adds 2 cm on each side,
+making the checked rectangle 0.460 m long and 0.544 m wide. Its boundaries
+relative to the axle are 0.084 m forward, 0.376 m rearward, and 0.272 m
+left/right. RViz shows this padded outline as **Cart footprint (with padding)**.
+The 0.8 m inflation radius and goal tolerances are separate settings.
+
 The default `localization:=cuvslam` uses NVIDIA's estimator with one RGB image,
 pixel-aligned depth, and color camera calibration. Isaac renders the aligned
 depth from the color optical center; `cuvslam_depth_conversion` converts float

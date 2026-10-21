@@ -78,8 +78,10 @@
     height: 6
     resolution: 0.05
     transform_tolerance: 0.3
-    footprint: "[[-0.60, -0.38], [0.35, -0.38], [0.35, 0.38], [-0.60, 0.38]]"
-    footprint_padding: 0.03
+    # Cart, rear casters, tires and hubs in the axle-centered base_link frame.
+    # Mesh/collision bounds rounded outward to 1 mm; arms excluded.
+    footprint: "[[-0.356, -0.252], [0.064, -0.252], [0.064, 0.252], [-0.356, 0.252]]"
+    footprint_padding: 0.02
     track_unknown_space: true
     always_send_full_costmap: true
     plugins: [nvblox_layer, footprint_layer, inflation_layer]
@@ -111,8 +113,9 @@
     origin_y: -8.0
     resolution: 0.05
     transform_tolerance: 0.3
-    footprint: "[[-0.60, -0.38], [0.35, -0.38], [0.35, 0.38], [-0.60, 0.38]]"
-    footprint_padding: 0.03
+    # Keep identical to the local cart-and-wheels footprint above.
+    footprint: "[[-0.356, -0.252], [0.064, -0.252], [0.064, 0.252], [-0.356, 0.252]]"
+    footprint_padding: 0.02
     track_unknown_space: true
     always_send_full_costmap: true
     plugins: [nvblox_layer, footprint_layer, inflation_layer]
