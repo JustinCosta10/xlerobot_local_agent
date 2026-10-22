@@ -8,18 +8,18 @@ from xlerobot_perception.processing import messages_from_arrays
 from xlerobot_perception.vocabulary import DEFAULT_CLASSES, PromptModel, Vocabulary, validate_classes
 
 
-def test_default_cubes_and_stable_mask_ids_after_reordering():
+def test_default_targets_and_stable_mask_ids_after_reordering():
     vocabulary = Vocabulary()
     vocabulary.activate(DEFAULT_CLASSES)
-    vocabulary.activate(["blue cube", "red cube", "mug"])
-    assert vocabulary.class_ids == [5, 1, 9]
+    vocabulary.activate(["mustard bottle", "mug", "book"])
+    assert vocabulary.class_ids == [5, 1, 8]
     detections, labels = messages_from_arrays(
         Header(), (2, 2), [[0, 0, 2, 2]], [.9], [0], np.ones((1, 2, 2)),
         class_ids=vocabulary.class_ids)
     assert (labels == 5).all()
     assert detections.detections[0].results[0].hypothesis.class_id == "5"
-    vocabulary.activate(["red cube"])
-    assert vocabulary.class_ids == [1] and vocabulary.labels["5"] == "blue cube"
+    vocabulary.activate(["mug"])
+    assert vocabulary.class_ids == [1] and vocabulary.labels["5"] == "mustard bottle"
 
 
 @pytest.mark.parametrize("names", [[], [" "], ["red cube", " RED  CUBE "], ["x" * 121],

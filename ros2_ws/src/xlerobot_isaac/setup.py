@@ -11,6 +11,7 @@ setup(
         ("share/xlerobot_isaac", ["package.xml"]),
         ("share/xlerobot_isaac/scripts", ["scripts/run_isaac.py", "scripts/run_isaac.sh"]),
         ("share/xlerobot_isaac/textures", glob("textures/*")),
+        ("share/xlerobot_isaac/config", glob("config/*.json")),
     ],
     install_requires=["setuptools"],
     zip_safe=True,

@@ -1,5 +1,7 @@
 """Optional flat navigation scene and simulation-only localization measurements."""
 
+import json
+import os
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -40,7 +42,7 @@ def add_navigation_obstacles(stage):
 
 
 def add_navigation_table(stage):
-    """A solid worktable with graspable cubes matching YOLOE's default vocabulary."""
+    """A cart-height worktable with textured household props and blue cubes."""
     from pxr import Gf, PhysxSchema, Sdf, UsdGeom, UsdPhysics, UsdShade
 
     def box(name, xyz, size, color):
@@ -78,28 +80,71 @@ def add_navigation_table(stage):
     box("Table", (table_x, table_y, table_height / 2),
         (0.7, 1.0, table_height), (0.3, 0.3, 0.3))
 
-    # Cube centers settle 2.5 cm above the cart-height tabletop, at 0.80 m.
-    # The +X edge faces the robot's spawn; stagger rows to keep colors visible.
-    colors = (
-        ("Red", (0.8, 0.015, 0.015)),
-        ("Orange", (1.0, 0.22, 0.005)),
-        ("Yellow", (0.95, 0.8, 0.01)),
-        ("Green", (0.015, 0.55, 0.035)),
-        ("Blue", (0.015, 0.06, 0.8)),
-        ("Purple", (0.35, 0.015, 0.65)),
-        ("Black", (0.01, 0.01, 0.01)),
-        ("White", (0.9, 0.9, 0.9)),
-    )
-    for index, (name, color) in enumerate(colors):
+    # Keep eight 5 cm blue cubes at the +X edge facing the robot's spawn.
+    # All share the generic "cube" detection target; centers settle at 0.80 m.
+    for index in range(8):
         row, column = divmod(index, 4)
         cube = box(
-            f"Cubes/{name}Cube",
-            (table_x + 0.25 - row * 0.15,
-             table_y + (column - 1.5) * 0.18 + row * 0.05,
+            f"Cubes/BlueCube{index + 1}",
+            (table_x + 0.29 - row * 0.09,
+             table_y + (column - 1.5) * 0.20 + row * 0.04,
              table_height + 0.025 + 0.001),
-            (0.05, 0.05, 0.05), color)
+            (0.05, 0.05, 0.05), (0.015, 0.06, 0.8))
         UsdPhysics.RigidBodyAPI.Apply(cube.GetPrim())
         UsdPhysics.MassAPI.Apply(cube.GetPrim()).CreateMassAttr(0.05)
+
+    add_tabletop_props(stage, table_x, table_y, table_height)
+
+
+def add_tabletop_props(stage, table_x, table_y, table_height):
+    """Place local NVIDIA YCB assets at natural size, with their bottoms on the table."""
+    from ament_index_python.packages import get_package_share_directory
+    from pxr import Gf, PhysxSchema, Usd, UsdGeom, UsdPhysics, UsdShade
+
+    share = Path(get_package_share_directory("xlerobot_isaac"))
+    manifest = json.loads((share / "config/tabletop_objects.json").read_text())
+    cache = os.environ.get("XLEROBOT_TABLETOP_ASSET_DIR")
+    if not cache:
+        raise RuntimeError("Source scripts/env.sh to set XLEROBOT_TABLETOP_ASSET_DIR")
+    assets = Path(cache).expanduser().resolve() / "Axis_Aligned"
+    contact_material = UsdShade.Material.Get(stage, "/World/Navigation/Looks/Table")
+    for prop in manifest["objects"]:
+        asset = assets / (prop["asset"] + ".usd")
+        texture = assets / "Materials/Textures" / (prop["asset"] + "_COLOR.png")
+        if not asset.is_file() or not texture.is_file():
+            raise RuntimeError(
+                f"Missing tabletop asset for {prop['class']}; "
+                "run python3 scripts/install_tabletop_assets.py from ros2_ws")
+        # Keep the asset's own transforms and texture bindings below a placement
+        # Xform. The YCB visual USDs already use meters, but have different poses.
+        path = f"/World/Navigation/Props/{prop['name']}"
+        placement = UsdGeom.Xform.Define(stage, path)
+        translate = placement.AddTranslateOp()
+        placement.AddRotateXYZOp().Set(Gf.Vec3f(*prop["rotation_xyz_degrees"]))
+        body = stage.DefinePrim(path + "/Asset")
+        body.GetReferences().AddReference(str(asset))
+        meshes = [prim for prim in Usd.PrimRange(body) if prim.IsA(UsdGeom.Mesh)]
+        if not meshes:
+            raise RuntimeError(f"Tabletop asset contains no meshes: {asset}")
+        UsdPhysics.RigidBodyAPI.Apply(body)
+        UsdPhysics.MassAPI.Apply(body).CreateMassAttr(prop["mass_kg"])
+        for mesh in meshes:
+            UsdPhysics.CollisionAPI.Apply(mesh)
+            UsdPhysics.MeshCollisionAPI.Apply(mesh).CreateApproximationAttr(prop["collision"])
+            collision = PhysxSchema.PhysxCollisionAPI.Apply(mesh)
+            collision.CreateContactOffsetAttr(0.002)
+            collision.CreateRestOffsetAttr(0.0)
+            UsdShade.MaterialBindingAPI.Apply(mesh).Bind(contact_material, materialPurpose="physics")
+
+        bounds = UsdGeom.BBoxCache(Usd.TimeCode.Default(), [
+            UsdGeom.Tokens.default_, UsdGeom.Tokens.render
+        ]).ComputeWorldBound(placement.GetPrim()).ComputeAlignedRange()
+        if bounds.IsEmpty():
+            raise RuntimeError(f"Tabletop asset has empty geometry bounds: {asset}")
+        center = bounds.GetMidpoint()
+        dx, dy = prop["offset_xy"]
+        translate.Set(Gf.Vec3d(table_x + dx - center[0], table_y + dy - center[1],
+                              table_height + 0.001 - bounds.GetMin()[2]))
 
 
 def add_navigation_textures(stage):

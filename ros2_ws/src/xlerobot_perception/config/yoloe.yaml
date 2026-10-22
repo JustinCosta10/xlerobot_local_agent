@@ -7,7 +7,7 @@
     iou: 0.7
     max_detections: 100
     # Initial targets. Replace them live via yoloe/set_vocabulary.
-    classes: [red cube, orange cube, yellow cube, green cube, blue cube, purple cube, black cube, white cube]
+    classes: [mug, banana, bowl, cracker box, mustard bottle, soup can, cube]
 
 /**/yoloe_visualizer:
   ros__parameters:

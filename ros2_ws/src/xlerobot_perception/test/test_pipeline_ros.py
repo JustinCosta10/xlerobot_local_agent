@@ -158,7 +158,7 @@ def test_service_updates_between_frames_and_preserves_ids_and_old_vocabulary_on_
         wait_for(lambda: client.service_is_ready() and metadata and publisher.get_subscription_count())
         send(1)
         assert model.entered.wait(3)
-        update = client.call_async(SetVocabulary.Request(classes=[" Blue Cube ", "RED CUBE"]))
+        update = client.call_async(SetVocabulary.Request(classes=[" Mustard Bottle ", "MUG"]))
         wait_for(lambda: detector.pending_update is not None)
         assert not update.done()  # Cannot acknowledge an update until inference finishes.
         busy = call(["chair"])
@@ -173,7 +173,7 @@ def test_service_updates_between_frames_and_preserves_ids_and_old_vocabulary_on_
         wait_for(update.done)
         response = update.result()
         assert response.success and response.revision == 2
-        assert response.classes == ["blue cube", "red cube"]
+        assert response.classes == ["mustard bottle", "mug"]
         assert list(response.class_ids) == [5, 1]
         wait_for(lambda: len(masks) == 2)
         assert [message.header.stamp.sec for message in masks] == [1, 5]
@@ -181,19 +181,19 @@ def test_service_updates_between_frames_and_preserves_ids_and_old_vocabulary_on_
         assert (bridge.imgmsg_to_cv2(masks[1]) == 5).all()
         assert [call[0] for call in model.calls] == [1, 5]
         # Services still apply when no images or /clock updates arrive.
-        response = call(["red cube", "blue cube", "mug"])
-        assert response.success and list(response.class_ids) == [1, 5, 9]
+        response = call(["mug", "mustard bottle", "book"])
+        assert response.success and list(response.class_ids) == [1, 5, 8]
         assert response.revision == 3
         repeated = call(response.classes)
         assert repeated.success and repeated.revision == 3
         failed = call(["error"])
         assert not failed.success and failed.revision == 3
         assert failed.classes == response.classes == model.names
-        assert list(failed.class_ids) == [1, 5, 9]
+        assert list(failed.class_ids) == [1, 5, 8]
         import json
         wait_for(lambda: json.loads(metadata[-1].data)["revision"] == 3)
         labels = json.loads(metadata[-1].data)["labels"]
-        assert labels["1"] == "red cube" and labels["5"] == "blue cube" and labels["9"] == "mug"
+        assert labels["1"] == "mug" and labels["5"] == "mustard bottle" and labels["8"] == "book"
     finally:
         model.release.set()
         executor.shutdown()

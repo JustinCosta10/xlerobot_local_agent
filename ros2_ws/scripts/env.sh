@@ -44,6 +44,7 @@ if [[ -f "$_xlerobot_ws/install/local_setup.bash" ]]; then
 fi
 export ISAAC_SIM_PATH="${ISAAC_SIM_PATH:-$HOME/isaacsim}"
 export XLEROBOT_ASSET="${XLEROBOT_ASSET:-$_xlerobot_ws/../xlerobot_isaac_sim/xlerobot_dd.usd}"
+export XLEROBOT_TABLETOP_ASSET_DIR="${XLEROBOT_TABLETOP_ASSET_DIR:-$_xlerobot_ws/.deps/isaac-props}"
 export RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}"
 # Use the same domain in all terminals; keep this simulation separate from domain 0.
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-42}"

@@ -1,0 +1,11 @@
+{
+  "asset_root": "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/6.2/Isaac/Props/YCB",
+  "objects": [
+    {"name": "Mug", "class": "mug", "asset": "025_mug", "offset_xy": [0.02, -0.30], "rotation_xyz_degrees": [0, 0, 90], "mass_kg": 0.118, "collision": "convexDecomposition"},
+    {"name": "Banana", "class": "banana", "asset": "011_banana", "offset_xy": [0.02, 0.00], "rotation_xyz_degrees": [90, 0, 90], "mass_kg": 0.066, "collision": "convexHull"},
+    {"name": "Bowl", "class": "bowl", "asset": "024_bowl", "offset_xy": [0.02, 0.30], "rotation_xyz_degrees": [90, 0, 0], "mass_kg": 0.147, "collision": "convexDecomposition"},
+    {"name": "CrackerBox", "class": "cracker box", "asset": "003_cracker_box", "offset_xy": [-0.22, -0.30], "rotation_xyz_degrees": [90, 0, 90], "mass_kg": 0.411, "collision": "convexHull"},
+    {"name": "MustardBottle", "class": "mustard bottle", "asset": "006_mustard_bottle", "offset_xy": [-0.22, 0.00], "rotation_xyz_degrees": [90, 0, 90], "mass_kg": 0.603, "collision": "convexHull"},
+    {"name": "SoupCan", "class": "soup can", "asset": "005_tomato_soup_can", "offset_xy": [-0.22, 0.30], "rotation_xyz_degrees": [90, 0, 0], "mass_kg": 0.349, "collision": "convexHull"}
+  ]
+}

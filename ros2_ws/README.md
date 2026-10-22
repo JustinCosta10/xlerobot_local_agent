@@ -205,11 +205,22 @@ accepts goals from RViz. No saved map is required.
 The center has a solid 70 × 100 cm table block at simulator coordinates
 `(-2.4, 0)`, with its top 77.5 cm above the floor, matching the IKEA cart's top
 in the URDF (38 cm chassis height plus 39.5 cm to the transformed cart mesh top).
-Eight movable 5 cm cubes sit in two staggered rows along the edge facing the
-robot's spawn: red, orange, yellow, green, blue, purple, black, and white,
-matching the default YOLOE vocabulary. Each cube has collision and a 50 g mass.
+Eight movable blue 5 cm cubes sit in two staggered rows along the edge facing
+the robot's spawn; each has collision and a 50 g mass. Behind them are six
+textured NVIDIA YCB props at natural size: a mug, banana, bowl, cracker box,
+mustard bottle, and soup can. All props have rigid-body physics and mesh
+colliders; the mug and bowl use convex decomposition to retain their openings.
+YOLOE's default vocabulary matches these objects and uses the generic `cube`
+target for all eight blue cubes.
 The original center box is shifted sideways to `(-2.4, 1.5)` to leave room.
-The table and cubes are created on each navigation simulation launch.
+The table and objects are created on each navigation simulation launch.
+
+`src/xlerobot_isaac/config/tabletop_objects.json` records the YCB source URLs,
+object positions, orientations, and masses. The one-time asset installer caches
+the USDs and their color textures under `.deps/isaac-props`; scene startup uses
+these local files. `XLEROBOT_TABLETOP_ASSET_DIR` overrides the cache directory.
+The models come from [NVIDIA's YCB asset collection](https://docs.isaacsim.omniverse.nvidia.com/latest/replicator_tutorials/tutorial_replicator_object_based_sdg.html),
+distributed with Isaac Sim; downloaded assets remain outside version control.
 
 The room uses matte painted-brick walls and a worn-concrete floor, with locally
 packaged albedo textures in `src/xlerobot_isaac/textures/`. Their generation
@@ -227,6 +238,7 @@ Install the optional dependencies, then build and launch from `ros2_ws/`:
 ```bash
 python3 scripts/install_local_dependencies.py --navigation
 bash scripts/install_yoloe.sh
+python3 scripts/install_tabletop_assets.py
 ./scripts/build.sh
 source scripts/env.sh
 ros2 launch xlerobot_navigation sim_navigation.launch.py
@@ -378,7 +390,7 @@ and semantic masks without rendering the overlay. The pipeline subscribes to
 driver. Set `yoloe_image_topic:=/image_raw` if that is the physical camera's topic.
 
 The default is the small text-prompted `yoloe-11s-seg.pt` checkpoint, initially
-looking for **red, orange, yellow, green, blue, purple, black, and white cubes**.
+looking for **mug, banana, bowl, cracker box, mustard bottle, soup can, and cube**.
 It merges YOLOE's object masks into a class label map;
 undetected pixels remain unknown. This is object segmentation, not exhaustive
 labeling of floor, walls, and background. See the
@@ -439,14 +451,14 @@ replaces the complete target list, while keeping the same image/detection topics
 source scripts/env.sh
 ros2 service call /xlerobot/yoloe/set_vocabulary \
   xlerobot_perception_interfaces/srv/SetVocabulary \
-  "{classes: ['red cube', 'blue cube', 'green cube']}"
+  "{classes: ['mug', 'banana', 'cube']}"
 ```
 
 In Foxglove, add a **Service Call** panel, select
 `/xlerobot/yoloe/set_vocabulary`, and send this JSON:
 
 ```json
-{"classes": ["red cube", "blue cube", "green cube"]}
+{"classes": ["mug", "banana", "cube"]}
 ```
 
 The response reports `success`, `message`, `revision`, and the active `classes`
@@ -468,8 +480,8 @@ current active vocabulary.
 
 Restart navigation once after installing this change so both the detector and
 Foxglove Bridge load the new service type. Later vocabulary changes need no
-restart. Color names are text prompts, not a separate calibrated color classifier;
-check their reliability against the cubes and lighting in your scene.
+restart. Targets are text prompts; verify their detection reliability against
+the objects, camera distance, and lighting in your scene.
 
 All frame outputs preserve the source image's timestamp and optical frame ID.
 The renderer synchronizes source, labels, and detections by exact timestamp.

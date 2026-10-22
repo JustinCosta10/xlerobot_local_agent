@@ -3,8 +3,7 @@
 from collections import OrderedDict
 
 
-DEFAULT_CLASSES = [f"{color} cube" for color in
-                   ("red", "orange", "yellow", "green", "blue", "purple", "black", "white")]
+DEFAULT_CLASSES = ["mug", "banana", "bowl", "cracker box", "mustard bottle", "soup can", "cube"]
 
 
 def validate_classes(classes):
