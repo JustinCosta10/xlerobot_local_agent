@@ -368,8 +368,9 @@ and semantic masks without rendering the overlay. The pipeline subscribes to
 `/camera/color/image_raw`; it does not depend on Isaac or a particular camera
 driver. Set `yoloe_image_topic:=/image_raw` if that is the physical camera's topic.
 
-The default is the small prompt-free `yoloe-11s-seg-pf.pt` checkpoint with its
-4,585-class vocabulary. It merges YOLOE's object masks into a class label map;
+The default is the small text-prompted `yoloe-11s-seg.pt` checkpoint, initially
+looking for **red, orange, yellow, green, blue, purple, black, and white cubes**.
+It merges YOLOE's object masks into a class label map;
 undetected pixels remain unknown. This is object segmentation, not exhaustive
 labeling of floor, walls, and background. See the
 [YOLOE model documentation](https://docs.ultralytics.com/models/yoloe/).
@@ -378,15 +379,19 @@ One-time setup on this workstation (already installed during implementation):
 
 ```bash
 bash scripts/install_yoloe.sh
-./scripts/build.sh --packages-select xlerobot_perception xlerobot_navigation
+./scripts/build.sh --packages-select xlerobot_perception_interfaces xlerobot_perception xlerobot_navigation
 source scripts/env.sh
 ```
 
 The installer keeps PyTorch 2.9.1/CUDA 12.8, torchvision 0.24.1, and Ultralytics
-8.4.184 in `.deps/yoloe`, and downloads weights to `.deps/models`.
+8.4.184 and a pinned CLIP tokenizer in `.deps/yoloe`. It downloads the detector
+and `mobileclip_blt.ts` text encoder to `.deps/models`.
 It leaves the system ROS and Isaac Python environments alone. Runtime uses local
-weights; a missing model produces a setup error. `XLEROBOT_YOLOE_PYTHON` and
-`XLEROBOT_YOLOE_MODEL` can override the paths set by `scripts/env.sh`.
+weights; a missing model produces a setup error. `XLEROBOT_YOLOE_PYTHON`,
+`XLEROBOT_YOLOE_MODEL`, and `XLEROBOT_YOLOE_TEXT_ENCODER` can override the paths
+set by `scripts/env.sh`. Re-sourcing migrates the old workspace-default
+prompt-free model path to the promptable checkpoint. Custom vocabulary requires
+the promptable model; the old `*-pf.pt` checkpoint cannot accept these updates.
 
 Start navigation normally:
 
@@ -409,13 +414,53 @@ ros2 launch xlerobot_perception yoloe.launch.py
 # For a camera on /image_raw, add image_topic:=/image_raw.
 ```
 
-Settings in [`config/yoloe.yaml`](src/xlerobot_perception/config/yoloe.yaml) apply
-at startup. Defaults are GPU 0, a 640-pixel inference size, confidence 0.25, and
+Settings in [`config/yoloe.yaml`](src/xlerobot_perception/config/yoloe.yaml),
+including the initial `classes` list, apply at startup. Defaults are GPU 0,
+a 640-pixel inference size, confidence 0.25, and
 at most 5 inference starts per wall-clock second. Pass `yoloe_config:=/path/file.yaml`
 to navigation or `config:=/path/file.yaml` to standalone launch for a custom file.
 The subscriber holds only the newest pending image while inference runs; it never
 repeatedly processes a paused camera's last frame. A separate process renders
 and JPEG-encodes only when someone subscribes to an overlay topic.
+
+Change targets while the node is running using the service below. Each request
+replaces the complete target list, while keeping the same image/detection topics:
+
+```bash
+source scripts/env.sh
+ros2 service call /xlerobot/yoloe/set_vocabulary \
+  xlerobot_perception_interfaces/srv/SetVocabulary \
+  "{classes: ['red cube', 'blue cube', 'green cube']}"
+```
+
+In Foxglove, add a **Service Call** panel, select
+`/xlerobot/yoloe/set_vocabulary`, and send this JSON:
+
+```json
+{"classes": ["red cube", "blue cube", "green cube"]}
+```
+
+The response reports `success`, `message`, `revision`, and the active `classes`
+and `class_ids`. Success means the new targets have been applied for subsequent
+inference. Updates run between frames and work even with a paused camera or
+simulation clock. New text encoding can briefly pause detections; the camera
+subscriber continues replacing the pending frame with the latest image.
+The encoder stays loaded, and the last 32 vocabularies' embeddings are cached.
+No downloads occur during vocabulary updates.
+
+Names are normalized to lowercase with single spaces. Requests must contain
+1–128 unique names of 1–120 printable characters each. Empty lists, duplicates,
+and requests arriving during another update return an error. Text encoding
+failures preserve the prior vocabulary. Repeating the active list succeeds
+without incrementing its revision. Changes last until the node restarts; edit
+`classes` in the YAML to change the next startup's defaults. The ROS `classes`
+parameter is read-only startup configuration; inspect `yoloe/classes` for the
+current active vocabulary.
+
+Restart navigation once after installing this change so both the detector and
+Foxglove Bridge load the new service type. Later vocabulary changes need no
+restart. Color names are text prompts, not a separate calibrated color classifier;
+check their reliability against the cubes and lighting in your scene.
 
 All frame outputs preserve the source image's timestamp and optical frame ID.
 The renderer synchronizes source, labels, and detections by exact timestamp.
@@ -424,25 +469,31 @@ Topics below use the default `/xlerobot` namespace:
 | Topic suffix | Type and meaning |
 | --- | --- |
 | `yoloe/detections` | `vision_msgs/Detection2DArray`: boxes in original image pixels, class IDs, confidence; no tracking IDs or estimated 3D pose |
-| `yoloe/semantic_mask` | `sensor_msgs/Image`, `16UC1`, original image size; 0 is unknown, other values are model class index + 1 |
-| `yoloe/classes` | Latched `std_msgs/String` JSON containing `model`, `labels` (ID strings to names), and `overlap_policy` |
+| `yoloe/semantic_mask` | `sensor_msgs/Image`, `16UC1`, original image size; 0 is unknown, other values are stable class IDs |
+| `yoloe/classes` | Latched `std_msgs/String` JSON containing `model`, `revision`, `labels`, `active_classes`, `active_class_ids`, and `overlap_policy` |
 | `yoloe/source_image` | Original processed image, published when subscribed; used by the renderer |
 | `yoloe/segmentation/image_raw` | Class-colored overlay, `sensor_msgs/Image` |
 | `yoloe/segmentation/image_raw/compressed` | JPEG overlay, `sensor_msgs/CompressedImage` |
 
 Detection `class_id` strings match the semantic mask values and `labels` keys.
+IDs are assigned to normalized names and remain stable for the lifetime of the
+node, including when targets are removed, reordered, or reintroduced. The label
+dictionary retains past names so queued images cannot be relabeled by a new
+vocabulary. IDs are local to a node run; they are not persistent object identities.
+The renderer waits for missing label metadata before displaying a new class.
 The highest-confidence detection wins where masks overlap. Empty results publish
 an empty detection array and all-zero label map, clearing old detections.
 YOLOE results are published for consumers; they do not change navigation behavior.
 
-Validation: six processing/ROS tests pass, including deliberate slow inference,
-newest-frame replacement, empty results, metadata delivery, and aligned raw/JPEG
-outputs. Real GPU inference on a bundled example image returned object masks.
-Live navigation and viewing in Foxglove await manual testing. Optional acceptance
-commands use an isolated ROS domain and stop their own launch:
+Validation: 16 processing/ROS tests pass, covering deliberate slow inference,
+newest-frame replacement, empty results, aligned raw/JPEG outputs, live service
+updates, stable IDs, and rejection/failure handling. Real CPU inference on a
+bundled example image passed repeated person/bus/cube vocabulary switches after
+model warmup. Cube/color accuracy in the user's scene awaits manual testing.
+Optional acceptance commands use an isolated ROS domain and stop their own launch:
 
 ```bash
-python3 scripts/test_yoloe.py               # Known image published as RGB at 30 Hz
+python3 scripts/test_yoloe.py               # Live switch to person/bus on a known image at 30 Hz
 python3 scripts/test_yoloe.py --navigation  # Full navigation with the Isaac camera
 ```
 
@@ -457,6 +508,7 @@ python3 scripts/test_yoloe.py --navigation  # Full navigation with the Isaac cam
 | `xlerobot_bringup` | Backend selection, controller startup, TF, diagnostics, optional RViz |
 | `xlerobot_navigation` | Nav2, nvblox, simulated localization, clicked goals, and navigation command guard |
 | `xlerobot_perception` | YOLOE detections, class label masks, and a separate Foxglove image renderer |
+| `xlerobot_perception_interfaces` | SetVocabulary service for live target changes |
 
 The selected model is `../xlerobot_isaac_sim/xlerobot_dd.usd`: the recovered
 XLeRobot with detailed 5-inch tires, printed hubs, rear-only caster meshes,

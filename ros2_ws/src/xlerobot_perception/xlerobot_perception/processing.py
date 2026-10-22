@@ -34,11 +34,11 @@ class LatestFrame:
             self.condition.notify_all()
 
 
-def messages_from_arrays(header, shape, boxes, scores, classes, masks):
+def messages_from_arrays(header, shape, boxes, scores, classes, masks, class_ids=None):
     """Merge instance masks into class IDs; highest-confidence mask wins overlaps.
 
-    Zero means unknown; other pixel values and Detection2D class_id strings are
-    model class index + 1, mapped to names by the latched `yoloe/classes` topic.
+    Zero means unknown; class_ids maps local model indices to stable semantic
+    IDs shared with Detection2D and the latched `yoloe/classes` metadata.
     No tracking or 3D pose is inferred.
     """
     labels = np.zeros(shape, dtype=np.uint16)
@@ -49,9 +49,10 @@ def messages_from_arrays(header, shape, boxes, scores, classes, masks):
         raise ValueError("YOLOE must return one full-resolution mask per detection")
     if any(int(cls) < 0 or int(cls) >= 65535 for cls in classes):
         raise ValueError("Model class IDs exceed the 16-bit semantic label range")
+    semantic_ids = [int(cls) + 1 if class_ids is None else class_ids[int(cls)] for cls in classes]
     for index in np.argsort(scores, kind="stable"):
-        labels[masks[index] > 0.5] = int(classes[index]) + 1
-    for box, score, cls in zip(boxes, scores, classes):
+        labels[masks[index] > 0.5] = semantic_ids[index]
+    for box, score, label in zip(boxes, scores, semantic_ids):
         x1, y1, x2, y2 = map(float, box)
         detection = Detection2D(header=header)
         detection.bbox.center.position.x = (x1 + x2) / 2
@@ -59,7 +60,7 @@ def messages_from_arrays(header, shape, boxes, scores, classes, masks):
         detection.bbox.size_x = x2 - x1
         detection.bbox.size_y = y2 - y1
         hypothesis = ObjectHypothesisWithPose()
-        hypothesis.hypothesis.class_id = str(int(cls) + 1)
+        hypothesis.hypothesis.class_id = str(label)
         hypothesis.hypothesis.score = float(score)
         detection.results.append(hypothesis)
         detections.detections.append(detection)

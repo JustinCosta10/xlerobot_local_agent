@@ -21,6 +21,8 @@ from rclpy.qos import DurabilityPolicy, QoSProfile
 from sensor_msgs.msg import CompressedImage, Image
 from std_msgs.msg import String
 from vision_msgs.msg import Detection2DArray
+from xlerobot_perception_interfaces.srv import SetVocabulary
+from xlerobot_perception.vocabulary import DEFAULT_CLASSES
 
 
 def main():
@@ -44,6 +46,8 @@ def main():
     rclpy.init()
     node = Node("yoloe_acceptance")
     detections, masks, overlays, classes = [], {}, {}, {}
+    vocabulary = {}
+    client = node.create_client(SetVocabulary, "/yoloe_test/yoloe/set_vocabulary")
 
     def stamp(message):
         return message.header.stamp.sec * 10**9 + message.header.stamp.nanosec
@@ -58,7 +62,8 @@ def main():
         overlays[stamp(message)] = message
 
     def on_classes(message):
-        classes.update(json.loads(message.data)["labels"])
+        vocabulary.update(json.loads(message.data))
+        classes.update(vocabulary["labels"])
 
     subscriptions = [node.create_subscription(msg_type, f"/yoloe_test/yoloe/{topic}", callback, qos)
                      for msg_type, topic, callback, qos in (
@@ -89,11 +94,23 @@ def main():
         try:
             deadline = time.monotonic() + (240 if args.navigation else 90)
             started = None
+            update = None
+            updated = args.navigation
             while started is None or time.monotonic() - started < args.seconds:
                 assert process.poll() is None, f"Launch exited; see {log_path}"
                 assert time.monotonic() < deadline, f"No YOLOE output; see {log_path}"
                 rclpy.spin_once(node, timeout_sec=.05)
-                if started is None and len(overlays) >= 3 and classes:
+                if not args.navigation and update is None and vocabulary and client.service_is_ready():
+                    assert vocabulary["active_classes"] == DEFAULT_CLASSES
+                    update = client.call_async(SetVocabulary.Request(classes=["person", "bus"]))
+                if update is not None and update.done() and not updated:
+                    assert update.result().success, update.result().message
+                    assert update.result().classes == ["person", "bus"]
+                    detections.clear()
+                    masks.clear()
+                    overlays.clear()
+                    updated = True
+                if started is None and updated and len(overlays) >= 3 and classes:
                     started = time.monotonic()
                     detections.clear()
             assert len(detections) >= 3, "Too few detections messages"
@@ -119,6 +136,7 @@ def main():
                     detected_names.add(classes[detection.results[0].hypothesis.class_id])
             if not args.navigation:
                 assert detected_names and any(bridge.imgmsg_to_cv2(masks[stamp(m)]).any() for m in aligned)
+                assert detected_names <= {"person", "bus"}
                 # End-to-end wall latency includes ROS delivery and CPU mask construction.
                 for arrival, message in detections:
                     wall_at_arrival = time.time() - (time.monotonic() - arrival)

@@ -49,7 +49,12 @@ export RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}"
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-42}"
 export ROS_LOG_DIR="${ROS_LOG_DIR:-$_xlerobot_ws/log/ros}"
 export XLEROBOT_YOLOE_PYTHON="${XLEROBOT_YOLOE_PYTHON:-$_xlerobot_ws/.deps/yoloe/bin/python}"
-export XLEROBOT_YOLOE_MODEL="${XLEROBOT_YOLOE_MODEL:-$_xlerobot_ws/.deps/models/yoloe-11s-seg-pf.pt}"
+# Migrate the previous built-in prompt-free default when re-sourcing an old shell.
+if [[ "${XLEROBOT_YOLOE_MODEL:-}" == "$_xlerobot_ws/.deps/models/yoloe-11s-seg-pf.pt" ]]; then
+    unset XLEROBOT_YOLOE_MODEL
+fi
+export XLEROBOT_YOLOE_MODEL="${XLEROBOT_YOLOE_MODEL:-$_xlerobot_ws/.deps/models/yoloe-11s-seg.pt}"
+export XLEROBOT_YOLOE_TEXT_ENCODER="${XLEROBOT_YOLOE_TEXT_ENCODER:-$_xlerobot_ws/.deps/models/mobileclip_blt.ts}"
 export YOLO_CONFIG_DIR="${YOLO_CONFIG_DIR:-$_xlerobot_ws/.deps/yoloe-config}"
 case ":$PATH:" in
     *":$_xlerobot_ws/scripts:"*) ;;

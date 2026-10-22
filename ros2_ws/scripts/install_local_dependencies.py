@@ -30,6 +30,7 @@ NAVIGATION_PACKAGES = [
     "ros-jazzy-isaac-ros-visual-slam",
     "ros-jazzy-cv-bridge", "ros-jazzy-vision-msgs", "ros-jazzy-message-filters",
     "python3-opencv",
+    "ros-jazzy-rosidl-default-generators",
 ]
 
 

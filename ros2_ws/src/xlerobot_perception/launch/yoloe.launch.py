@@ -18,14 +18,16 @@ def setup(context):
 
     python = Path(value("python"))
     model = Path(value("model"))
-    if not python.is_file() or not model.is_file():
+    encoder = Path(value("text_encoder"))
+    if not python.is_file() or not model.is_file() or not encoder.is_file():
         raise RuntimeError("YOLOE runtime/weights missing. Run bash scripts/install_yoloe.sh, "
-                           "then source scripts/env.sh; or provide python:= and model:= paths.")
+                           "then source scripts/env.sh; or provide python:=, model:= and text_encoder:= paths.")
     parameters = [value("config"), {"use_sim_time": value("use_sim_time") == "true"}]
     nodes = [Node(
         package="xlerobot_perception", executable="yoloe_node", name="yoloe",
         namespace=value("namespace"), output="screen", prefix=shlex.quote(str(python)),
-        parameters=[*parameters, {"model": str(model), "image_topic": value("image_topic")}],
+        parameters=[*parameters, {"model": str(model), "text_encoder": str(encoder),
+                                 "image_topic": value("image_topic")}],
         additional_env={"YOLO_AUTOINSTALL": "false"})]
     if value("visualize") == "true":
         nodes.append(Node(package="xlerobot_perception", executable="yoloe_visualizer",
@@ -44,6 +46,8 @@ def generate_launch_description():
         DeclareLaunchArgument("config", default_value=str(share / "config/yoloe.yaml")),
         DeclareLaunchArgument("python", default_value=os.environ.get("XLEROBOT_YOLOE_PYTHON", sys.executable)),
         DeclareLaunchArgument("model", default_value=os.environ.get(
-            "XLEROBOT_YOLOE_MODEL", "yoloe-11s-seg-pf.pt")),
+            "XLEROBOT_YOLOE_MODEL", "yoloe-11s-seg.pt")),
+        DeclareLaunchArgument("text_encoder", default_value=os.environ.get(
+            "XLEROBOT_YOLOE_TEXT_ENCODER", "mobileclip_blt.ts")),
         OpaqueFunction(function=setup),
     ])

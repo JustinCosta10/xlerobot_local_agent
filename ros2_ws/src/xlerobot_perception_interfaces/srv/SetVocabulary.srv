@@ -1,0 +1,12 @@
+# Replace the active targets. Empty lists and duplicate names are rejected.
+string[] classes
+---
+# True only once the vocabulary is active for subsequent inference.
+bool success
+string message
+# These fields describe the active vocabulary even on a rejected request.
+uint64 revision
+string[] classes
+# Stable semantic-mask / Detection2D class IDs for the corresponding names.
+# IDs are never reused for different names during this node's lifetime.
+uint16[] class_ids

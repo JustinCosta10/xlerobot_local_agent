@@ -25,6 +25,7 @@ class YoloeVisualizer(Node):
             raise ValueError("mask_alpha must be in [0, 1]")
         self.bridge = CvBridge()
         self.names = {}
+        self.pending_frame = None
         self.raw = self.create_publisher(Image, "yoloe/segmentation/image_raw", 1)
         self.compressed = self.create_publisher(
             CompressedImage, "yoloe/segmentation/image_raw/compressed", 1)
@@ -40,11 +41,20 @@ class YoloeVisualizer(Node):
 
     def set_classes(self, message):
         self.names = json.loads(message.data)["labels"]
+        if self.pending_frame is not None:
+            frame, self.pending_frame = self.pending_frame, None
+            self.render(*frame)
 
     def render(self, source, semantic, detections):
+        self.pending_frame = None
         want_raw = self.raw.get_subscription_count() > 0
         want_compressed = self.compressed.get_subscription_count() > 0
         if not (want_raw or want_compressed):
+            return
+        if any(d.results[0].hypothesis.class_id not in self.names for d in detections.detections):
+            # Metadata and images use different DDS topics and may arrive out of order.
+            # Keep only the newest aligned frame until the label dictionary arrives.
+            self.pending_frame = (source, semantic, detections)
             return
         image = self.bridge.imgmsg_to_cv2(source, desired_encoding="bgr8")
         labels = self.bridge.imgmsg_to_cv2(semantic, desired_encoding="passthrough")

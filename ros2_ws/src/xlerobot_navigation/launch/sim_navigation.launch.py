@@ -115,7 +115,7 @@ def generate_launch_description():
         DeclareLaunchArgument("rviz", default_value="true", choices=["true", "false"]),
         DeclareLaunchArgument("foxglove", default_value="true", choices=["true", "false"]),
         DeclareLaunchArgument("yoloe", default_value="true", choices=["true", "false"],
-                              description="Start broad YOLOE detection and class segmentation"),
+                              description="Start YOLOE detection with live vocabulary and class segmentation"),
         DeclareLaunchArgument("yoloe_image_topic", default_value="/camera/color/image_raw"),
         DeclareLaunchArgument("yoloe_visualize", default_value="true", choices=["true", "false"],
                               description="Run the separate Foxglove segmentation renderer"),

@@ -3,35 +3,31 @@
 import json
 import math
 from pathlib import Path
-from threading import Event, Thread
+from threading import Event, Lock, Thread
 import time
 
 from cv_bridge import CvBridge, CvBridgeError
 import numpy as np
 import rclpy
 from rcl_interfaces.msg import ParameterDescriptor
+from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
+from rclpy.task import Future
 from sensor_msgs.msg import Image
 from std_msgs.msg import String
 from vision_msgs.msg import Detection2DArray
+from xlerobot_perception_interfaces.srv import SetVocabulary
 
 from .processing import LatestFrame, messages_from_arrays
+from .vocabulary import DEFAULT_CLASSES, PromptModel, Vocabulary, validate_classes
 
 
-def load_model(path, device, image_size):
-    # Import only in the inference process; the renderer uses the ROS interpreter.
-    from ultralytics import YOLOE
-    import torch
-
-    if not Path(path).is_file():
-        raise FileNotFoundError(f"YOLOE weights missing: {path}. Run scripts/install_yoloe.sh.")
-    torch.set_num_threads(2)
-    model = YOLOE(path)
-    if not hasattr(model.model.model[-1], "lrpc"):
-        raise ValueError("Broad detection requires a prompt-free YOLOE *-seg-pf.pt checkpoint")
-    # Finish model setup before accepting images. No automatic downloads at runtime.
+def load_model(path, encoder_path, device, image_size, names):
+    model = PromptModel(path, encoder_path, device)
+    model.set_classes(names)
+    # Finish model setup before accepting images.
     model.predict(np.zeros((image_size, image_size, 3), dtype=np.uint8),
                   device=device, imgsz=image_size, retina_masks=True, verbose=False)
     return model
@@ -46,7 +42,9 @@ class YoloeNode(Node):
                 name, default, ParameterDescriptor(read_only=True)).value
 
         topic = parameter("image_topic", "/camera/color/image_raw")
-        path = parameter("model", "yoloe-11s-seg-pf.pt")
+        path = parameter("model", "yoloe-11s-seg.pt")
+        encoder_path = parameter("text_encoder", "mobileclip_blt.ts")
+        names = validate_classes(parameter("classes", DEFAULT_CLASSES))
         self.device = parameter("device", "0")
         rate = parameter("rate_hz", 5.0)
         self.image_size = parameter("image_size", 640)
@@ -65,31 +63,95 @@ class YoloeNode(Node):
         self.stop = Event()
         self.failure = None
         self.worker = None
-        self.model = model if model is not None else load_model(path, self.device, self.image_size)
+        self.update_lock = Lock()
+        self.pending_update = None
+        self.model_name = Path(path).name
+        self.vocabulary = Vocabulary()
+        self.model = model if model is not None else load_model(
+            path, encoder_path, self.device, self.image_size, names)
+        if model is not None:
+            self.model.set_classes(names)
+        self.vocabulary.activate(names)
+        self.state = self.snapshot()
         self.detections = self.create_publisher(Detection2DArray, "yoloe/detections", 1)
         self.semantic = self.create_publisher(Image, "yoloe/semantic_mask", 1)
         self.source = self.create_publisher(Image, "yoloe/source_image", 1)
         metadata_qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
         self.classes = self.create_publisher(String, "yoloe/classes", metadata_qos)
-        names = self.model.names
-        entries = names.items() if isinstance(names, dict) else enumerate(names)
-        self.classes.publish(String(data=json.dumps({
-            "model": Path(path).name,
-            "labels": {"0": "unknown", **{str(int(i) + 1): name for i, name in entries}},
-            "overlap_policy": "highest_detection_confidence",
-        })))
+        self.publish_classes()
+        # Awaiting a service response must not block the camera subscription.
+        self.control_group = ReentrantCallbackGroup()
+        self.control = self.create_service(
+            SetVocabulary, "yoloe/set_vocabulary", self.set_vocabulary,
+            callback_group=self.control_group)
         # Compatible with both reliable and best-effort camera publishers.
         qos = QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT)
         self.subscription = self.create_subscription(Image, topic, self.pending.put, qos)
         self.worker = Thread(target=self.run, name="yoloe-inference", daemon=True)
         self.worker.start()
-        self.get_logger().info(f"YOLOE ready: {topic}, up to {rate:g} Hz, device={self.device}")
+        self.get_logger().info(f"YOLOE ready: {topic}, up to {rate:g} Hz, device={self.device}; "
+                               f"targets={names}")
+
+    def snapshot(self):
+        return (self.vocabulary.revision, tuple(self.vocabulary.active),
+                tuple(self.vocabulary.class_ids))
+
+    def publish_classes(self):
+        self.classes.publish(String(data=json.dumps({
+            "model": self.model_name,
+            "revision": self.vocabulary.revision,
+            "labels": self.vocabulary.labels,
+            "active_classes": self.vocabulary.active,
+            "active_class_ids": self.vocabulary.class_ids,
+            "overlap_policy": "highest_detection_confidence",
+        })))
+
+    def response(self, success, message):
+        revision, names, ids = self.state
+        return SetVocabulary.Response(success=success, message=message, revision=revision,
+                                      classes=list(names), class_ids=list(ids))
+
+    async def set_vocabulary(self, request, _response):
+        try:
+            names = validate_classes(request.classes)
+        except ValueError as error:
+            return self.response(False, str(error))
+        with self.update_lock:
+            if self.stop.is_set():
+                return self.response(False, "Detector is stopping")
+            if self.pending_update is not None:
+                return self.response(False, "A vocabulary update is already in progress; retry after its response")
+            future = Future(executor=self.executor)
+            self.pending_update = (names, future)
+        return await future
+
+    def apply_update(self):
+        with self.update_lock:
+            update = self.pending_update
+        if update is None:
+            return
+        names, future = update
+        try:
+            self.vocabulary.check_capacity(names)
+            self.model.set_classes(names)
+            self.vocabulary.activate(names)
+            self.state = self.snapshot()
+            self.publish_classes()
+            response = self.response(True, "Vocabulary active")
+            self.get_logger().info(f"Vocabulary revision {response.revision}: {names}")
+        except Exception as error:
+            response = self.response(False, f"Vocabulary update failed: {error}")
+            self.get_logger().error(response.message)
+        with self.update_lock:
+            self.pending_update = None
+        future.set_result(response)
 
     def run(self):
         next_start = 0.0
         try:
             while not self.stop.wait(max(0.0, next_start - time.monotonic())):
-                message = self.pending.take()
+                self.apply_update()
+                message = self.pending.take(timeout=.05)
                 if message is None:
                     continue
                 next_start = time.monotonic() + self.period
@@ -105,7 +167,8 @@ class YoloeNode(Node):
                 masks = None if result.masks is None else result.masks.data
                 detections, labels = messages_from_arrays(
                     message.header, image.shape[:2], result.boxes.xyxy,
-                    result.boxes.conf, result.boxes.cls, masks)
+                    result.boxes.conf, result.boxes.cls, masks,
+                    class_ids=self.vocabulary.class_ids)
                 semantic = self.bridge.cv2_to_imgmsg(labels, encoding="16UC1")
                 semantic.header = message.header
                 if self.stop.is_set() or not self.context.ok():
@@ -125,6 +188,10 @@ class YoloeNode(Node):
         self.pending.close()
         if self.worker is not None:
             self.worker.join()
+        with self.update_lock:
+            if self.pending_update is not None:
+                self.pending_update[1].set_result(self.response(False, "Detector stopped"))
+                self.pending_update = None
         return super().destroy_node()
 
 

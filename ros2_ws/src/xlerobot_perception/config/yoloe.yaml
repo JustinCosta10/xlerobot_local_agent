@@ -6,6 +6,8 @@
     confidence: 0.25
     iou: 0.7
     max_detections: 100
+    # Initial targets. Replace them live via yoloe/set_vocabulary.
+    classes: [red cube, orange cube, yellow cube, green cube, blue cube, purple cube, black cube, white cube]
 
 /**/yoloe_visualizer:
   ros__parameters:
