@@ -200,7 +200,7 @@ def check(process, idle_seconds):
         print(f"PASS: planned and drove {travel:.2f} m; endpoint error {error:.3f} m", flush=True)
         assert localization_error < .20, f"Localization drift: {localization_error:.3f} m"
         print(f"PASS: localization error {localization_error:.3f} m against independent ground truth", flush=True)
-        blocked = goal(-2.4, 0.0).get_result_async()  # center of the reconstructed box
+        blocked = goal(-2.4, 0.0).get_result_async()  # center of the reconstructed table
         wait(blocked.done, 30, "reject occupied goal")
         assert blocked.result().status == GoalStatus.STATUS_ABORTED, blocked.result()
         print("PASS: goal inside obstacle aborted", flush=True)

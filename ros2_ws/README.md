@@ -202,6 +202,15 @@ Nav2, nvblox, and Isaac ROS cuVSLAM in RGBD mode. It adds a small room with boxe
 estimates motion from the D455 images, reconstructs obstacles from depth, and
 accepts goals from RViz. No saved map is required.
 
+The center has a solid 70 × 100 cm table block at simulator coordinates
+`(-2.4, 0)`, with its top 77.5 cm above the floor, matching the IKEA cart's top
+in the URDF (38 cm chassis height plus 39.5 cm to the transformed cart mesh top).
+Eight movable 5 cm cubes sit in two staggered rows along the edge facing the
+robot's spawn: red, orange, yellow, green, blue, purple, black, and white,
+matching the default YOLOE vocabulary. Each cube has collision and a 50 g mass.
+The original center box is shifted sideways to `(-2.4, 1.5)` to leave room.
+The table and cubes are created on each navigation simulation launch.
+
 The room uses matte painted-brick walls and a worn-concrete floor, with locally
 packaged albedo textures in `src/xlerobot_isaac/textures/`. Their generation
 prompts and provenance are in `textures/prompts.json`. Textures use physical

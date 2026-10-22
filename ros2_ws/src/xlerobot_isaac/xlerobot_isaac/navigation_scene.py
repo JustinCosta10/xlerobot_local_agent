@@ -25,7 +25,7 @@ def add_navigation_obstacles(stage):
         ("BackWall", (2.0, 0.0, 0.75), (0.15, 8.0, 1.5), (0.55, 0.6, 0.65)),
         ("LeftWall", (-1.5, -4.0, 0.75), (7.0, 0.15, 1.5), (0.55, 0.6, 0.65)),
         ("RightWall", (-1.5, 4.0, 0.75), (7.0, 0.15, 1.5), (0.55, 0.6, 0.65)),
-        ("CenterBox", (-2.4, 0.0, 0.45), (0.6, 0.6, 0.9), (0.8, 0.35, 0.12)),
+        ("CenterBox", (-2.4, 1.5, 0.45), (0.6, 0.6, 0.9), (0.8, 0.35, 0.12)),
         ("SideBox", (-3.7, -1.8, 0.3), (0.7, 0.7, 0.6), (0.2, 0.5, 0.8)),
     ):
         cube = UsdGeom.Cube.Define(stage, f"/World/Navigation/{name}")
@@ -35,7 +35,71 @@ def add_navigation_obstacles(stage):
         cube.CreateDisplayColorAttr([Gf.Vec3f(*color)])
         UsdPhysics.CollisionAPI.Apply(cube.GetPrim())
 
+    add_navigation_table(stage)
     add_navigation_textures(stage)
+
+
+def add_navigation_table(stage):
+    """A solid worktable with graspable cubes matching YOLOE's default vocabulary."""
+    from pxr import Gf, PhysxSchema, Sdf, UsdGeom, UsdPhysics, UsdShade
+
+    def box(name, xyz, size, color):
+        cube = UsdGeom.Cube.Define(stage, f"/World/Navigation/{name}")
+        cube.CreateSizeAttr(1.0)
+        cube.AddTranslateOp().Set(Gf.Vec3d(*xyz))
+        cube.AddScaleOp().Set(Gf.Vec3d(*size))
+        cube.CreateDisplayColorAttr([Gf.Vec3f(*color)])
+        UsdPhysics.CollisionAPI.Apply(cube.GetPrim())
+        # Small contact margins matter for the 5 cm objects; rest on the surface.
+        collision = PhysxSchema.PhysxCollisionAPI.Apply(cube.GetPrim())
+        collision.CreateContactOffsetAttr(0.002)
+        collision.CreateRestOffsetAttr(0.0)
+
+        path = f"/World/Navigation/Looks/{name.rsplit('/', 1)[-1]}"
+        material = UsdShade.Material.Define(stage, path)
+        surface = UsdShade.Shader.Define(stage, path + "/Surface")
+        surface.CreateIdAttr("UsdPreviewSurface")
+        surface.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(*color))
+        surface.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.8)
+        surface.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
+        material.CreateSurfaceOutput().ConnectToSource(surface.ConnectableAPI(), "surface")
+        contact = UsdPhysics.MaterialAPI.Apply(material.GetPrim())
+        contact.CreateStaticFrictionAttr(0.8)
+        contact.CreateDynamicFrictionAttr(0.6)
+        contact.CreateRestitutionAttr(0.0)
+        binding = UsdShade.MaterialBindingAPI.Apply(cube.GetPrim())
+        binding.Bind(material)
+        binding.Bind(material, materialPurpose="physics")
+        return cube
+
+    # Match the URDF cart top: chassis z=0.38 m plus the transformed
+    # raskogbody.stl mesh top at z=0.3950757 m in the chassis frame.
+    table_x, table_y, table_height = -2.4, 0.0, 0.775
+    box("Table", (table_x, table_y, table_height / 2),
+        (0.7, 1.0, table_height), (0.3, 0.3, 0.3))
+
+    # Cube centers settle 2.5 cm above the cart-height tabletop, at 0.80 m.
+    # The +X edge faces the robot's spawn; stagger rows to keep colors visible.
+    colors = (
+        ("Red", (0.8, 0.015, 0.015)),
+        ("Orange", (1.0, 0.22, 0.005)),
+        ("Yellow", (0.95, 0.8, 0.01)),
+        ("Green", (0.015, 0.55, 0.035)),
+        ("Blue", (0.015, 0.06, 0.8)),
+        ("Purple", (0.35, 0.015, 0.65)),
+        ("Black", (0.01, 0.01, 0.01)),
+        ("White", (0.9, 0.9, 0.9)),
+    )
+    for index, (name, color) in enumerate(colors):
+        row, column = divmod(index, 4)
+        cube = box(
+            f"Cubes/{name}Cube",
+            (table_x + 0.25 - row * 0.15,
+             table_y + (column - 1.5) * 0.18 + row * 0.05,
+             table_height + 0.025 + 0.001),
+            (0.05, 0.05, 0.05), color)
+        UsdPhysics.RigidBodyAPI.Apply(cube.GetPrim())
+        UsdPhysics.MassAPI.Apply(cube.GetPrim()).CreateMassAttr(0.05)
 
 
 def add_navigation_textures(stage):
