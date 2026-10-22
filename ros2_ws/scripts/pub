@@ -28,7 +28,7 @@ def main():
                         help="turn speed in rad/s (default: 0; negative turns right)")
     parser.add_argument("--namespace", default="xlerobot", help="robot namespace (default: xlerobot)")
     parser.add_argument("--wall-time", action="store_true",
-                        help="use wall time for hardware or mock instead of Isaac simulation time")
+                        help="use wall time for mock instead of Isaac simulation time")
     args = parser.parse_args()
     topic = f"/{args.namespace.strip('/')}/cmd_vel"
     message = {"header": "auto", "twist": {

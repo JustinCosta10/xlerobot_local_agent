@@ -80,8 +80,7 @@ def test_generated_model_matches_saved_dd_source():
 
 def test_backend_selects_one_hardware_owner():
     import xacro
-    for backend, plugin in (("isaac", None), ("mock", "mock_components/GenericSystem"),
-                            ("hardware", "xlerobot_control/TopicSystem")):
+    for backend, plugin in (("isaac", None), ("mock", "mock_components/GenericSystem")):
         root = ET.fromstring(xacro.process_file(
             str(PACKAGE / "urdf/robot.urdf.xacro"),
             mappings={"backend": backend, "namespace": "test_robot"}).toxml())

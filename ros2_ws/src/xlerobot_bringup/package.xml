@@ -2,7 +2,7 @@
 <package format="3">
   <name>xlerobot_bringup</name>
   <version>0.1.0</version>
-  <description>Shared launch and visualization for XLeRobot Isaac, hardware, and mock backends.</description>
+  <description>Shared launch and visualization for XLeRobot Isaac and mock backends.</description>
   <maintainer email="justin@example.com">Justin</maintainer>
   <license>Proprietary</license>
   <buildtool_depend>ament_cmake</buildtool_depend>
@@ -16,7 +16,6 @@
   <exec_depend>xlerobot_description</exec_depend>
   <exec_depend>xlerobot_control</exec_depend>
   <exec_depend>xlerobot_diagnostics</exec_depend>
-  <exec_depend>xlerobot_hardware</exec_depend>
   <exec_depend>robot_state_publisher</exec_depend>
   <exec_depend>xacro</exec_depend>
   <exec_depend>python3-yaml</exec_depend>

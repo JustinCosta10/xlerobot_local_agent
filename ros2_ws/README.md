@@ -1,13 +1,16 @@
 # XLeRobot DD ROS 2 workspace
 
-One ROS interface for the two-wheel XLeRobot, with selectable Isaac Sim and
-physical STS3215 transports. The same ros2_control controllers publish joint
+One ROS interface for the two-wheel XLeRobot, with Isaac Sim and a mock backend
+for interface tests. The same ros2_control controllers publish joint
 states and odometry and serve trajectory actions in both modes. The same
 robot_state_publisher owns the robot TF tree.
 
+Physical motor transport is deferred until real-robot integration. No serial
+driver or physical backend is included in this workspace.
+
 Environment: Ubuntu 24.04, ROS 2 Jazzy, Python 3.12, Fast DDS, and Isaac Sim
 6.2.0 with NVIDIA’s bundled `isaacsim.ros2.control` 0.1.6. Isaac uses its bundled
-ros2_control 4.47.0; hardware/mock use the workspace’s 4.48.1. The shared
+ros2_control 4.47.0; mock uses the workspace’s 4.48.1. The shared
 ros2_controllers are 4.42.1. This runner requires Isaac 6.2.
 
 ## Build and select a backend
@@ -20,15 +23,12 @@ source scripts/env.sh
 ros2 launch xlerobot_bringup robot.launch.py backend:=isaac
 # Or, without a GPU or physical motors:
 ros2 launch xlerobot_bringup robot.launch.py backend:=mock
-# Or, after configuring the physical robot:
-ros2 launch xlerobot_bringup robot.launch.py backend:=hardware \
-  hardware_config:=/absolute/path/to/hardware.yaml
 ```
 
 Run one of these at a time. Backend selection happens at launch; switching means
 stopping and relaunching the robot interface. Algorithm nodes use the same topic,
 action, frame, and unit conventions. Their `use_sim_time` parameter must follow
-the selected backend: `true` for Isaac, `false` for hardware or mock.
+the selected backend: `true` for Isaac, `false` for mock.
 
 `headless:=true` runs Isaac without its GUI; `rviz:=true` opens the shared robot
 model and TF display. Sensors and their publishing graph load by default;
@@ -59,8 +59,6 @@ flowchart TD
     A[Applications: cmd_vel and trajectory actions] --> C[Shared ROS controllers]
     C --> N[Isaac: NVIDIA IsaacSimSystem]
     N <--> I[Isaac articulation]
-    C --> T[Hardware: TopicSystem]
-    T <--> H[Calibrated serial transport]
     C --> M[Mock: GenericSystem]
     C --> J[Joint state broadcaster]
     J --> R[robot_state_publisher]
@@ -73,7 +71,7 @@ simulator using NVIDIA’s `isaacsim.ros2.control.ROS2ControlManager` OmniGraph 
 and `isaacsim_ros2_control/IsaacSimSystem` hardware plugin. The native plugin reads
 joint feedback and applies controller commands directly during physics updates.
 There is no external controller manager or command-topic transport in Isaac mode.
-Hardware and mock retain their external ROS controller manager. All modes use
+Mock uses an external ROS controller manager. Both modes use
 [`controllers.yaml`](src/xlerobot_control/config/controllers.yaml).
 
 The controller managers load controller settings and topic remaps before spawning.
@@ -85,8 +83,8 @@ Isaac overrides `base_controller.position_feedback` to `false` in a temporary
 copy of the controller configuration. Its raw continuous wheel positions wrap
 by approximately 4π; position differencing otherwise produces false odometry
 jumps (observed: 0.35 m and 1.77 rad in one update). The simulator now integrates
-measured wheel velocities with `open_loop: false`. Hardware and mock retain the
-shared encoder-position configuration.
+measured wheel velocities with `open_loop: false`. Mock retains the
+shared position-feedback configuration.
 
 The launch scene enables PhysX `enableExternalForcesEveryIteration` and uses
 zero TGS velocity iterations on the robot articulation, retaining its position
@@ -112,7 +110,7 @@ robot USD.
 
 Isaac derives its hardware interfaces from the USD drives: the wheels use
 velocity control and the arms/head/grippers use position control. The shared
-URDF remains the source for robot_state_publisher and hardware/mock interfaces.
+URDF remains the source for robot_state_publisher and mock interfaces.
 The runner validates its link transforms and joint axes against the USD before
 starting physics.
 
@@ -130,7 +128,7 @@ starting physics.
 Each trajectory must include all joints belonging to that controller. Joint
 membership and common controller settings are in
 [`controllers.yaml`](src/xlerobot_control/config/controllers.yaml).
-For example, this head action works through either transport:
+For example, this head action works with either backend:
 
 ```bash
 ros2 action send_goal /xlerobot/head_controller/follow_joint_trajectory \
@@ -176,7 +174,7 @@ pub 0          # publish zero velocity
 Run one command at a time; Ctrl+C ends it and the controller's command timeout
 stops the robot. The helper publishes `TwistStamped` at 10 Hz on
 `/xlerobot/cmd_vel`, using fresh simulation timestamps. Use `--wall-time` for
-hardware or mock, or `--namespace NAME` if launched with a different namespace.
+mock, or `--namespace NAME` if launched with a different namespace.
 
 Global interfaces are `/cmd_vel` (plain `Twist`), `/tf`, `/tf_static`,
 `/diagnostics`, and, for Isaac only, `/clock`. Frame ownership is:
@@ -191,20 +189,11 @@ Global interfaces are `/cmd_vel` (plain `Twist`), `/tf`, `/tf_static`,
 
 This workspace supports one robot per ROS domain. Topic namespaces do not prefix
 TF frames. The basic robot launch provides odometry; the optional navigation
-launch below adds the `map` frame and simulation localization.
+launch below adds the `map` frame and cuVSLAM localization.
 
-Hardware transport topics are `backend/joint_states`, `backend/position_command`,
-and `backend/velocity_command` under the robot namespace. Applications use the
-public controllers above. Feedback contains all 16 joints with finite position
-and velocity arrays. Position commands contain the 14 position joints; velocity
-commands contain the two wheels.
-
-Hardware TopicSystem waits for complete feedback, starts from measured joint
-positions, limits commands, and faults after one second without valid feedback.
-A fault requires explicit lifecycle recovery or relaunch. Hardware diagnostics
-check raw transport feedback separately from the public broadcaster. Isaac
-uses native plugin feedback through its joint-state broadcaster. Diagnostic
-freshness uses wall time, including when simulation time stops.
+Isaac exposes native plugin feedback through its joint-state broadcaster.
+Diagnostics monitor the public joint states, TF, and advancing simulation clock.
+Diagnostic freshness uses wall time, including when simulation time stops.
 
 ## Clicked-goal navigation with live nvblox mapping
 
@@ -224,8 +213,7 @@ visual position error with blank surfaces versus 0.015 m with these textures,
 using the same velocity-feedback configuration and independent simulator poses.
 These are short simulation measurements, not a general accuracy guarantee.
 
-Install the optional dependencies (rerun if upgrading the older ground-truth
-navigation setup), then build and launch from `ros2_ws/`:
+Install the optional dependencies, then build and launch from `ros2_ws/`:
 
 ```bash
 python3 scripts/install_local_dependencies.py --navigation
@@ -291,7 +279,7 @@ relative to the axle are 0.084 m forward, 0.376 m rearward, and 0.272 m
 left/right. RViz shows this padded outline as **Cart footprint (with padding)**.
 The 0.8 m inflation radius and goal tolerances are separate settings.
 
-The default `localization:=cuvslam` uses NVIDIA's estimator with one RGB image,
+Localization always uses NVIDIA's cuVSLAM estimator with one RGB image,
 pixel-aligned depth, and color camera calibration. Isaac renders the aligned
 depth from the color optical center; `cuvslam_depth_conversion` converts float
 meters to uint16 millimeters without changing acquisition timestamps. The
@@ -331,13 +319,9 @@ scenes. It can correct poses on loop closure; the current nvblox map does not
 reintegrate old observations after those corrections. Map persistence,
 dynamic-object reconstruction, and physical-camera bringup are separate work.
 
-For deterministic navigation debugging, use
-`ros2 launch xlerobot_navigation sim_navigation.launch.py localization:=ground_truth`.
-That mode uses Isaac's measured pose and aligns `map` with the simulator world;
-the robot initially faces -X and a goal near `(-1.1, 0)` is ahead. Ground truth
-remains published for independent test measurements in both modes, but only
-the explicit `ground_truth` mode uses it for navigation. Its message frame is
-`sim_world`, distinct from cuVSLAM's map.
+Simulator ground truth remains published on `/xlerobot/sim_ground_truth` for
+independent test measurements. Navigation uses only cuVSLAM estimates.
+The ground-truth message frame is `sim_world`, distinct from cuVSLAM's map.
 
 Configuration follows NVIDIA's [Isaac ROS 4.3 RGBD example](https://nvidia-isaac-ros.github.io/v/release-4.3/concepts/visual_slam/cuvslam/tutorial_realsense_rgbd.html).
 
@@ -359,10 +343,9 @@ wrapped encoder displacement at rest and during turns, and rejects stationary
 odometry bias. It then performs a measured full 360-degree turn,
 checks timestamp-aligned visual pose errors throughout the turn, and rejects
 wheel-odometry discontinuities as the raw wheel angles wrap. It also verifies
-that only the test observer subscribes to simulator ground truth in cuVSLAM mode.
+that only the test observer subscribes to simulator ground truth.
 Before driving it checks stationary drift and visual frame intervals for 15
 simulation seconds. Use `--idle-seconds 90` for the longer drift regression.
-Use `--localization ground_truth` to exercise the debugging mode.
 Launch output is in `log/navigation-test.log`. Add
 `--gui` to show Isaac, `--rviz` to show the goal interface, or `--domain-id N`
 to choose another unused domain.
@@ -373,64 +356,16 @@ localization error, rejection of an occupied goal, a 0.5 rad turn with 0.127 rad
 final heading error, and cancellation passed. The full 360-degree regression
 passed with maximum visual error 0.023 m and 0.003 rad, and continuous wheel
 odometry across four raw wheel-angle wraps. Ten navigation/Isaac unit tests passed.
-The earlier ground-truth regression passed (0.84 m travel, 0.116 m goal error).
-Per-mode test logs are saved as `log/navigation-cuvslam-test.log` and
-`log/navigation-ground_truth-test.log` after each run. These are short simulation
-acceptance checks; physical-camera performance and long-route drift are not yet
+These are short simulation acceptance checks; physical-camera performance and long-route drift are not yet
 validated.
-
-Ground-truth baseline validated on 2026-10-20 with the RTX 5080 host: live nvblox reconstruction,
-0.83 m of actual simulated body travel with 0.119 m endpoint error, rejection
-of a goal inside the center box, and cancellation all passed. The RViz run
-loaded the robot, map, path, mesh, and Nav2 panel without plugin-load errors.
-
-## Physical robot configuration
-
-Copy [`hardware.example.yaml`](src/xlerobot_hardware/config/hardware.example.yaml)
-outside the source template and fill every `null`. The template's IDs come from
-the [upstream two-wheel XLeRobot definition](https://github.com/Vector-Wangel/XLeRobot/blob/main/software/src/robots/xlerobot_2wheels/xlerobot_2wheels.py).
-No mapping or calibration from `toro/xlerobot-pro` is used.
-
-The adapter supports STS3215 servos over serial buses. Configuration supplies:
-
-- Serial paths and baud rates; stable `/dev/serial/by-id/...` paths are preferable.
-- The bus and motor ID for every URDF joint.
-- `zero_tick`: the reported encoder position at that joint's URDF zero angle,
-  after the servo's existing homing offset.
-- `direction`: +1 or -1 relating encoder motion to positive URDF rotation.
-- `min_tick`, `max_tick`: calibrated encoder bounds, intersected with URDF limits.
-- `max_velocity`: rad/s; position motor speed limits and wheel command limits.
-
-Calibration uses `q = direction * (ticks - zero_tick) * 2π/4096`. Wheel position
-is unwrapped relative to startup. LeRobot percentages or degree-based calibration
-cannot be inserted as radians. A position command outside the calibrated/URDF
-intersection faults the transport. Wheel speed is bounded to its configured limit.
-The current adapter assumes direct-drive, single-turn position servos; different
-actuator types or gearing need a matching transport implementation.
-
-Before activation, the adapter checks all servo model numbers and operating modes
-and reads complete feedback. Position joints must already be in mode 0 and wheels
-in mode 1. It seeds hold targets before enabling torque, and requires both controller
-command streams. It does not write EEPROM, IDs, modes, homing offsets, or PID gains.
-A 0.5-second wall-clock command watchdog defaults to stopping the transport.
-On shutdown or a detected fault it attempts to stop wheels and hold the last
-measured position of the arms/head/grippers, leaving their torque enabled.
-A severed serial link or killed host cannot deliver a software stop; use the
-robot's physical stop/power controls for that failure case.
-
-**Real motors have not been exercised.** The physical path was tested through the
-actual SDK and ROS nodes using two pseudo-terminal servo buses. Actual ports,
-zero offsets, directions, travel limits, bus timing, and physical motion still
-need validation on your robot. The incomplete template fails before opening ports.
 
 ## Packages and model ownership
 
 | Package | Responsibility |
 | --- | --- |
 | `xlerobot_description` | Generated URDF, model joint limits, portable mesh references |
-| `xlerobot_control` | C++ TopicSystem hardware plugin, differential-drive timeout logging, and shared controller configuration |
+| `xlerobot_control` | Differential-drive timeout logging, velocity command adapter, and shared controller configuration |
 | `xlerobot_isaac` | Isaac scene composition, native controller manager, sensors, clock |
-| `xlerobot_hardware` | Calibration validation, serial SDK adapter, command watchdog |
 | `xlerobot_diagnostics` | Shared interface monitor and passive check |
 | `xlerobot_bringup` | Backend selection, controller startup, TF, diagnostics, optional RViz |
 | `xlerobot_navigation` | Nav2, nvblox, simulated localization, clicked goals, and navigation command guard |
@@ -487,31 +422,33 @@ seconds to verify sustained movement.
 USD/URDF frame and axis parity, visible wheel meshes, contact dimensions, and
 preserved wheel-drive limits have separate offline checks.
 
-Current status (2026-10-20): manual `cmd_vel` commands now move the robot in
-Isaac Sim, confirmed by the user. The Isaac `--check-motion` acceptance test has
-not been rerun for this documentation update; sustained travel over the test
-duration and command-timeout behavior still need automated revalidation.
+Validated on 2026-10-22 after removing the physical motor backend: all six
+remaining packages built from clean build/install directories, and `colcon
+test-result` reported 35 tests with no errors, failures, or skips. The build
+script selects system Python so CMake does not pick the incomplete interpreter
+inside the extracted dependency prefix.
 
-Previously recorded automated results: the Isaac interface/graph and
-head-trajectory checks passed. The mock and emulated-hardware backends passed
-sustained motion and command-timeout checks; emulated serial-disconnect handling
-also passed.
+The mock motion acceptance test and headless Isaac test with
+`--check-motion --sensors true` passed. Both checked head trajectories, forward
+and reverse driving, turns, and command-timeout braking. Isaac also passed
+native controller ownership, RGB/depth/camera-info/point-cloud delivery, camera
+TF, and single-clock checks. Independent physics measurements showed 0.168 m
+and 0.187 m forward travel, 0.177 m reverse travel, and a 0.546 rad turn.
+The full navigation acceptance results above remain the earlier recorded runs.
 
 ```bash
 source scripts/env.sh
 colcon test --event-handlers console_direct+
 colcon test-result --verbose
 python3 scripts/test_sim.py --backend mock --check-motion
-python3 scripts/test_sim.py --backend emulated --check-motion --check-disconnect
-python3 scripts/test_sim.py --backend isaac --check-motion
-python3 scripts/test_sim.py --backend isaac --sensors true
+python3 scripts/test_sim.py --backend isaac --check-motion --sensors true
 ```
 
 Integration tests never open physical motor ports. They use domain 91 by default,
 namespace `xlerobot_test`, disable sensors by default (`--sensors true` enables them), and write
 `log/<backend>-test.log`. They disable Foxglove Bridge to avoid competing with an
 existing robot session for its WebSocket port. Select an unused
-domain with `--domain-id`. DDS unit tests use domains 92 and 94. Checks require
+domain with `--domain-id`. DDS unit tests use domains 92 and 95. Checks require
 local networking; the Isaac test also requires GPU access. The sensor-enabled
 test verifies camera messages, frame IDs, mount/optical transforms, and a single
 clock publisher. Add `--gui` to show the native controller Action Graph editor.
@@ -521,15 +458,14 @@ For a passive check of an already running interface:
 
 ```bash
 ros2 run xlerobot_diagnostics check_bridge --timeout 120 \
-  --ros-args -r __ns:=/xlerobot -p require_backend_feedback:=false
-# Hardware: use -p require_clock:=false -p require_backend_feedback:=true
+  --ros-args -r __ns:=/xlerobot
 # Mock: add -p require_clock:=false
 ros2 topic echo /diagnostics
 ```
 
 ## Dependencies
 
-The required ROS controller packages and Python servo SDK have been installed
+The required ROS controller packages have been installed
 locally under this workspace's ignored `.deps/` directory. `env.sh` includes them;
 the operating system installation was not changed.
 
@@ -539,7 +475,6 @@ On another Jazzy machine, prefer system ROS dependencies:
 sudo apt install python3-colcon-common-extensions python3-rosdep
 rosdep update
 rosdep install --from-paths src --ignore-src --rosdistro jazzy -y
-python3 -m pip install --target .deps/python -r requirements-hardware.txt
 ```
 
 If administrative package installation is unavailable, the local dependency
@@ -548,7 +483,6 @@ without running package maintainer scripts:
 
 ```bash
 python3 scripts/install_local_dependencies.py
-python3 -m pip install --target .deps/python -r requirements-hardware.txt
 ./scripts/build.sh
 ```
 

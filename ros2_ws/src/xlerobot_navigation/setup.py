@@ -16,7 +16,6 @@ setup(
     description="cuVSLAM, Nav2, and nvblox simulation navigation", license="Proprietary",
     tests_require=["pytest"],
     entry_points={"console_scripts": [
-        "sim_localization = xlerobot_navigation.sim_localization:main",
         "vslam_localization = xlerobot_navigation.vslam_localization:main",
         "cuvslam_depth_conversion = xlerobot_navigation.depth_conversion:main",
         "navigation_guard = xlerobot_navigation.guard:main",

@@ -5,13 +5,12 @@ import math
 
 class BridgeHealth:
     def __init__(self, stale_after=3.0, base_frame="chassis", require_clock=True,
-                 expected_joints=(), require_backend_feedback=False):
+                 expected_joints=()):
         if not math.isfinite(stale_after) or stale_after <= 0:
             raise ValueError("stale_after must be a positive finite number")
         self.stale_after = stale_after
         self.base_frame = base_frame
         self.require_clock = require_clock
-        self.require_backend_feedback = require_backend_feedback
         self.expected_joints = set(expected_joints)
         self.seen = {}
         self.clock_ns = None
@@ -45,20 +44,11 @@ class BridgeHealth:
                for parent, child in parent_child_pairs):
             self.seen["tf"] = now
 
-    def backend_feedback(self, names, positions, velocities, now):
-        if (names and len(set(names)) == len(names)
-                and len(names) == len(positions) == len(velocities)
-                and self.expected_joints.issubset(names)
-                and all(math.isfinite(value) for value in (*positions, *velocities))):
-            self.seen["backend_feedback"] = now
-
     def problems(self, now):
         problems = []
         streams = ["joint_states", "tf"]
         if self.require_clock:
             streams.insert(0, "clock")
-        if self.require_backend_feedback:
-            streams.append("backend_feedback")
         for stream in streams:
             if stream not in self.seen:
                 problems.append(f"waiting for {stream}")

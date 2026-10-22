@@ -35,14 +35,13 @@ that the robot achieves that speed. [Wheel-command conversion and limiting](http
 | Wheel spacing L | 0.45 m | Local model's distance between drive wheels |
 | Current forward/reverse speed cap | +/-0.10 m/s | Controller setting |
 | Current turning-speed cap | +/-0.5235987755982988 rad/s (30 degrees/s) | Controller setting: original slow preset |
-| Wheel-speed limit in hardware template | 3.0 rad/s per wheel | Provisional template setting |
+| Illustrative wheel-speed cap | 3.0 rad/s per wheel | Calculation example; not an active setting |
 | Wheel velocity limit in source URDF | 4.72 rad/s | Model value |
 
 Local sources: [controller configuration](ros2_ws/src/xlerobot_control/config/controllers.yaml),
-[hardware template](ros2_ws/src/xlerobot_hardware/config/hardware.example.yaml),
 and [source URDF](xlerobot_isaac_sim/source/xlerobot_dd.urdf).
-The hardware template is incomplete and requires calibration. Its 3.0 rad/s
-setting is not a measured motor maximum or an automatically applied Isaac limit.
+The 3.0 rad/s example is not a measured motor maximum or an applied Isaac limit.
+Physical motor transport and calibration are deferred until real-robot integration.
 
 The original project's software defaults use **r = 0.05 m and L = 0.25 m**,
 which differ from this workspace. Its dual-wheel assembly guide specifies
@@ -65,8 +64,8 @@ right wheel speed [rad/s] = (v + w * L / 2) / r
 
 `R` is the radius traced by the midpoint of the drive axle (`base_link`). It is
 not the clearance needed by the chassis, arms, or rear casters. The equations
-use physical left/right wheel directions; this model's joint names and motor
-signs require the mappings already in the controller and hardware configuration.
+use physical left/right wheel directions; this model's joint names require the
+side mappings in the controller configuration. Real motor signs will need calibration.
 [Original differential-drive equations](https://github.com/Vector-Wangel/XLeRobot/blob/main/software/src/robots/xlerobot_2wheels/README.md)
 
 - Straight driving: `w = 0`, so the radius is infinite.
@@ -90,7 +89,7 @@ values before limiting. Negative left-wheel speed means that wheel reverses.
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Lower-speed example | 0.05 | 0.15 | 0.3333 | 0.2559 | 1.3189 |
 | Lower-turn example | 0.10 | 0.20 | 0.5000 | 0.8661 | 2.2835 |
-| Alternative fitting the 3.0 rad/s template wheel limit | 0.10 | 0.40 | 0.2500 | 0.1575 | 2.9921 |
+| Alternative fitting an illustrative 3.0 rad/s wheel cap | 0.10 | 0.40 | 0.2500 | 0.1575 | 2.9921 |
 | Current TELEOP.md command and controller caps: original slow preset | 0.10 | 0.523599 | 0.1910 | -0.2805 | 3.4301 |
 | Original project's medium preset | 0.20 | 1.047198 | 0.1910 | -0.5609 | 6.8601 |
 | Original project's fast preset | 0.30 | 1.570796 | 0.1910 | -0.8414 | 10.2902 |
@@ -105,7 +104,7 @@ For a symmetric wheel limit `q_max`, both wheel commands fit when:
 abs(v) + abs(w) * L / 2 <= r * q_max
 ```
 
-Using the hardware template's `q_max = 3.0 rad/s` gives these calculated bounds:
+Using an illustrative `q_max = 3.0 rad/s` gives these calculated bounds:
 
 | Condition | Calculated bound |
 | --- | ---: |
@@ -113,9 +112,9 @@ Using the hardware template's `q_max = 3.0 rad/s` gives these calculated bounds:
 | Turn in place, v = 0 | abs(w) <= 0.8467 rad/s |
 | Turning while v = 0.10 m/s | abs(w) <= 0.4022 rad/s |
 
-These are kinematic bounds from a provisional software limit. The body velocity
+These are kinematic bounds from an example wheel-speed cap. The body velocity
 caps constrain straight motion and in-place turns more tightly, but their
-combined maximum exceeds the template's wheel limit. Independently clipping
+combined maximum exceeds that example wheel-speed cap. Independently clipping
 wheel speeds can change the requested turning radius.
 
 **Selected slow preset**
@@ -128,13 +127,12 @@ Acceleration limits still apply. Restart the robot or navigation launch and
 teleop to load these settings. Autonomous navigation retains its separate
 0.10 m/s and 0.20 rad/s command limits.
 
-The hardware template still limits each wheel to **3.0 rad/s**. On physical
-hardware using that limit, the faster wheel would be clipped during a combined
-slow-preset turn, changing the actual speed and radius. Hardware limits must be
-chosen from the calibrated robot; this teleop change does not raise them.
+With a hypothetical **3.0 rad/s** wheel cap, the faster wheel would be clipped
+during a combined slow-preset turn, changing the actual speed and radius.
+Future physical limits must be chosen from the calibrated robot.
 
 As a lower-turn alternative, **0.10 m/s and 0.40 rad/s** give a **0.25 m radius**
-and require at most **2.9921 rad/s** per wheel. This fits the template numerically
+and require at most **2.9921 rad/s** per wheel. This fits the example cap numerically
 with almost no margin for geometry uncertainty. Both combinations are calculated
 settings that still require physical validation.
 

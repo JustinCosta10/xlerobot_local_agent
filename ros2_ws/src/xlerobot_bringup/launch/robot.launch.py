@@ -57,23 +57,13 @@ def setup(context):
             command += ["--state-log", value("state_log")]
         critical(ExecuteProcess(cmd=command, output="screen", sigterm_timeout="20",
                                 sigkill_timeout="10"), "Isaac Sim")
-    elif backend == "hardware":
-        config = Path(value("hardware_config"))
-        if not value("hardware_config") or not config.is_file():
-            raise RuntimeError("backend:=hardware requires hardware_config:=/absolute/path/to/calibration.yaml")
-        # Validate all mappings before starting any process or opening a serial port.
-        from xlerobot_hardware.config import load_config
-        load_config(config, joint_config)
-        critical(Node(package="xlerobot_hardware", executable="servo_bridge", namespace=namespace,
-                      parameters=[{"hardware_config": str(config.resolve()), "use_sim_time": False}],
-                      output="screen"), "Physical transport")
 
     critical(Node(package="robot_state_publisher", executable="robot_state_publisher",
                   namespace=namespace, parameters=[{"robot_description": description,
                                                     "use_sim_time": sim_time}], output="screen"),
              "Robot state publisher")
     # Isaac 6.2 hosts its own controller manager through isaacsim.ros2.control.
-    # The hardware and mock backends still use the external ROS controller manager.
+    # The mock backend uses the external ROS controller manager.
     if backend != "isaac":
         critical(Node(package="controller_manager", executable="ros2_control_node",
                       namespace=namespace, parameters=[controllers, {"use_sim_time": sim_time}],
@@ -101,7 +91,6 @@ def setup(context):
                 Node(package="xlerobot_diagnostics", executable="bridge_monitor", namespace=namespace,
                      parameters=[str(share / "config/bridge.yaml"), {
                          "use_sim_time": sim_time, "require_clock": sim_time,
-                         "require_backend_feedback": backend == "hardware",
                          "expected_joints": list(joint_config)}], output="screen")]
     if value("foxglove") == "true":
         foxglove_share = Path(get_package_share_directory("foxglove_bridge"))
@@ -122,9 +111,8 @@ def setup(context):
 
 def generate_launch_description():
     return LaunchDescription([
-        DeclareLaunchArgument("backend", default_value="isaac", choices=["isaac", "hardware", "mock"]),
+        DeclareLaunchArgument("backend", default_value="isaac", choices=["isaac", "mock"]),
         DeclareLaunchArgument("namespace", default_value="xlerobot"),
-        DeclareLaunchArgument("hardware_config", default_value=""),
         DeclareLaunchArgument("isaac_sim_path", default_value=os.environ.get("ISAAC_SIM_PATH", str(Path.home() / "isaacsim"))),
         DeclareLaunchArgument("asset", default_value=os.environ.get("XLEROBOT_ASSET", "")),
         DeclareLaunchArgument("start_sim", default_value="true", choices=["true", "false"]),

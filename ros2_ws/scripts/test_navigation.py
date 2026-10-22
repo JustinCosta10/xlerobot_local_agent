@@ -7,7 +7,6 @@ import math
 import os
 from pathlib import Path
 import signal
-import shutil
 import statistics
 import subprocess
 import time
@@ -53,7 +52,7 @@ def check_wheel_feedback(messages, label):
           f"maximum mean error {max(errors):.4f} rad/s", flush=True)
 
 
-def check(process, localization, idle_seconds):
+def check(process, idle_seconds):
     rclpy.init()
     node = rclpy.create_node("navigation_acceptance", parameter_overrides=[Parameter("use_sim_time", value=True)])
     data = {}
@@ -143,41 +142,40 @@ def check(process, localization, idle_seconds):
         wait(lambda: data.get("active") and client.server_is_ready()
              and all(k in data for k in ("pose", "estimate", "slice", "odom")),
              300, "live mapping and navigation startup")
-        if localization == "cuvslam":
-            truth_consumers = node.get_subscriptions_info_by_topic("/xlerobot_test/sim_ground_truth")
-            assert all(info.node_name == "navigation_acceptance" for info in truth_consumers), \
-                "Ground truth must only be consumed by this independent test observer"
-            # Ground truth is used ONLY by this observer, never by localization.
-            actual, estimate = data["pose"].pose, data["estimate"].pose
-            heading = yaw(estimate) - yaw(actual)
-            c, s = math.cos(heading), math.sin(heading)
-            world_to_map = (estimate.position.x - c*actual.position.x + s*actual.position.y,
-                            estimate.position.y - s*actual.position.x - c*actual.position.y, heading)
-            print("PASS: cuVSLAM localization ready; ground truth only consumed by test observer", flush=True)
-            idle_start = node.get_clock().now().nanoseconds * 1e-9
-            idle_pose = data["estimate"].pose.position
-            turn_samples = {key: [] for key in ("pose", "estimate", "odom", "joints")}
-            pose_stamps.clear()
-            wait(lambda: node.get_clock().now().nanoseconds * 1e-9 >= idle_start + idle_seconds,
-                 max(60, idle_seconds * 6), "stationary visual tracking")
-            current = data["estimate"].pose.position
-            drift = math.sqrt((current.x-idle_pose.x)**2 + (current.y-idle_pose.y)**2 +
-                              (current.z-idle_pose.z)**2)
-            deltas = sorted(1000*(b-a) for a,b in zip(pose_stamps, list(pose_stamps)[1:]) if b > a)
-            assert len(deltas) >= 30, "Too few visual poses for camera timing check"
-            p95 = deltas[int(.95*(len(deltas)-1))]
-            print(f"Stationary for {idle_seconds:g} sim seconds: drift {drift:.3f} m; "
-                  f"visual frame intervals median {statistics.median(deltas):.1f}, "
-                  f"p95 {p95:.1f}, max {max(deltas):.1f} ms", flush=True)
-            assert drift < .10, f"Stationary visual drift: {drift:.3f} m"
-            assert p95 <= 50, f"Visual frames exceed the 50 ms threshold: p95 {p95:.1f} ms"
-            stationary, turn_samples = turn_samples, None
-            check_wheel_feedback(stationary["joints"], "Stationary")
-            mean_v = statistics.mean(m.twist.twist.linear.x for m in stationary["odom"])
-            mean_w = statistics.mean(m.twist.twist.angular.z for m in stationary["odom"])
-            assert abs(mean_v) < .003 and abs(mean_w) < .005, \
-                f"Stationary odometry bias: {mean_v:.4f} m/s, {mean_w:.4f} rad/s"
-            print(f"PASS: stationary odometry bias {mean_v:.4f} m/s, {mean_w:.4f} rad/s", flush=True)
+        truth_consumers = node.get_subscriptions_info_by_topic("/xlerobot_test/sim_ground_truth")
+        assert all(info.node_name == "navigation_acceptance" for info in truth_consumers), \
+            "Ground truth must only be consumed by this independent test observer"
+        # Ground truth is used ONLY by this observer, never by localization.
+        actual, estimate = data["pose"].pose, data["estimate"].pose
+        heading = yaw(estimate) - yaw(actual)
+        c, s = math.cos(heading), math.sin(heading)
+        world_to_map = (estimate.position.x - c*actual.position.x + s*actual.position.y,
+                        estimate.position.y - s*actual.position.x - c*actual.position.y, heading)
+        print("PASS: cuVSLAM localization ready; ground truth only consumed by test observer", flush=True)
+        idle_start = node.get_clock().now().nanoseconds * 1e-9
+        idle_pose = data["estimate"].pose.position
+        turn_samples = {key: [] for key in ("pose", "estimate", "odom", "joints")}
+        pose_stamps.clear()
+        wait(lambda: node.get_clock().now().nanoseconds * 1e-9 >= idle_start + idle_seconds,
+             max(60, idle_seconds * 6), "stationary visual tracking")
+        current = data["estimate"].pose.position
+        drift = math.sqrt((current.x-idle_pose.x)**2 + (current.y-idle_pose.y)**2 +
+                          (current.z-idle_pose.z)**2)
+        deltas = sorted(1000*(b-a) for a,b in zip(pose_stamps, list(pose_stamps)[1:]) if b > a)
+        assert len(deltas) >= 30, "Too few visual poses for camera timing check"
+        p95 = deltas[int(.95*(len(deltas)-1))]
+        print(f"Stationary for {idle_seconds:g} sim seconds: drift {drift:.3f} m; "
+              f"visual frame intervals median {statistics.median(deltas):.1f}, "
+              f"p95 {p95:.1f}, max {max(deltas):.1f} ms", flush=True)
+        assert drift < .10, f"Stationary visual drift: {drift:.3f} m"
+        assert p95 <= 50, f"Visual frames exceed the 50 ms threshold: p95 {p95:.1f} ms"
+        stationary, turn_samples = turn_samples, None
+        check_wheel_feedback(stationary["joints"], "Stationary")
+        mean_v = statistics.mean(m.twist.twist.linear.x for m in stationary["odom"])
+        mean_w = statistics.mean(m.twist.twist.angular.z for m in stationary["odom"])
+        assert abs(mean_v) < .003 and abs(mean_w) < .005, \
+            f"Stationary odometry bias: {mean_v:.4f} m/s, {mean_w:.4f} rad/s"
+        print(f"PASS: stationary odometry bias {mean_v:.4f} m/s, {mean_w:.4f} rad/s", flush=True)
         distances = data["slice"]
         assert distances.header.frame_id == "map"
         known = [d for d in distances.data if d != distances.unknown_value and math.isfinite(d)]
@@ -343,7 +341,6 @@ def main():
     parser.add_argument("--gui", action="store_true")
     parser.add_argument("--rviz", action="store_true", help="also open the configured RViz goal interface")
     parser.add_argument("--domain-id", type=int, default=96)
-    parser.add_argument("--localization", choices=["cuvslam", "ground_truth"], default="cuvslam")
     parser.add_argument("--idle-seconds", type=float, default=15,
                         help="Simulation seconds to check stationary cuVSLAM drift and frame timing")
     args = parser.parse_args()
@@ -360,10 +357,9 @@ def main():
             "ros2", "launch", "xlerobot_navigation", "sim_navigation.launch.py",
             "namespace:=xlerobot_test", f"rviz:={str(args.rviz).lower()}", "foxglove:=false",
             f"headless:={str(not args.gui).lower()}",
-            f"localization:={args.localization}",
         ], stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
         try:
-            check(process, args.localization, args.idle_seconds)
+            check(process, args.idle_seconds)
             log.flush()
             assert "Failed to make progress" not in log_path.read_text(), \
                 "Navigation retried after a progress failure; inspect log/navigation-test.log"
@@ -376,7 +372,6 @@ def main():
                     os.killpg(process.pid, signal.SIGKILL)
                     process.wait(timeout=10)
             log.flush()
-            shutil.copyfile(log_path, workspace / f"log/navigation-{args.localization}-test.log")
 
 
 if __name__ == "__main__":

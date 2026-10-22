@@ -23,22 +23,18 @@ class BridgeMonitor(Node):
         self.declare_parameter("stale_after", 3.0)
         self.declare_parameter("base_frame", "head_tilt_link")
         self.declare_parameter("require_clock", True)
-        self.declare_parameter("require_backend_feedback", False)
         self.declare_parameter("expected_joints", ["head_pan_joint"])
         self.health = BridgeHealth(
             self.get_parameter("stale_after").value,
             self.get_parameter("base_frame").value,
             self.get_parameter("require_clock").value,
             self.get_parameter("expected_joints").value,
-            self.get_parameter("require_backend_feedback").value,
         )
         self.create_subscription(Clock, "/clock", self.on_clock,
                                  QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT))
         self.create_subscription(JointState, "joint_states", self.on_joints,
                                  qos_profile_sensor_data)
         self.create_subscription(TFMessage, "/tf", self.on_tf, qos_profile_sensor_data)
-        self.create_subscription(JointState, "backend/joint_states", self.on_backend,
-                                 qos_profile_sensor_data)
         self.diagnostics = self.create_publisher(DiagnosticArray, "/diagnostics", 10)
         self.wall_clock = RclClock(clock_type=ClockType.STEADY_TIME)
         self.create_timer(1.0, self.publish_health, clock=self.wall_clock)
@@ -49,9 +45,6 @@ class BridgeMonitor(Node):
 
     def on_joints(self, msg):
         self.health.joints(msg.name, msg.position, time.monotonic())
-
-    def on_backend(self, msg):
-        self.health.backend_feedback(msg.name, msg.position, msg.velocity, time.monotonic())
 
     def on_tf(self, msg):
         self.health.transforms(
@@ -108,7 +101,7 @@ def check_main(args=None):
         while rclpy.ok() and time.monotonic() < deadline:
             rclpy.spin_once(node, timeout_sec=min(0.1, max(0.0, deadline - time.monotonic())))
             if not node.health.problems(time.monotonic()):
-                clock_text = "advancing /clock" if node.health.require_clock else "hardware time"
+                clock_text = "advancing /clock" if node.health.require_clock else "wall time"
                 print(f"PASS: {clock_text}, {len(node.health.joint_names)} joints, "
                       f"and TF for {node.health.base_frame}")
                 print("Joints: " + ", ".join(node.health.joint_names))

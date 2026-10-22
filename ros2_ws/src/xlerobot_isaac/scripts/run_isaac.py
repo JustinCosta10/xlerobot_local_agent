@@ -266,7 +266,7 @@ def main():
     try:
         # Isaac's continuous wheel positions wrap. Differencing those angles
         # creates false distance/heading jumps at each wrap. Integrate measured
-        # wheel velocities in this backend; retain encoder feedback on hardware.
+        # wheel velocities in this backend; retain position feedback on mock.
         controllers = yaml.safe_load(args.controllers.read_text())
         controllers["/**/base_controller"]["ros__parameters"]["position_feedback"] = False
         yaml.safe_dump(controllers, controller_config)

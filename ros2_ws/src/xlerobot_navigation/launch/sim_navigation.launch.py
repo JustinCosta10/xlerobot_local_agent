@@ -20,15 +20,13 @@ def setup(context):
         return LaunchConfiguration(name).perform(context)
 
     namespace = value("namespace").strip("/")
-    visual = value("localization") == "cuvslam"
     share = Path(get_package_share_directory("xlerobot_navigation"))
     bringup = Path(get_package_share_directory("xlerobot_bringup"))
     # Resolve dependencies before starting a potentially expensive simulation.
     for package in ("nvblox_ros", "nvblox_nav2", "nav2_bt_navigator",
-                    "nav2_smac_planner", "nav2_regulated_pure_pursuit_controller"):
+                    "nav2_smac_planner", "nav2_regulated_pure_pursuit_controller",
+                    "isaac_ros_visual_slam"):
         get_package_share_directory(package)
-    if visual:
-        get_package_share_directory("isaac_ros_visual_slam")
     params = ReplaceString(source_file=str(share / "config/nav2.yaml"),
                            replacements={"__NS__": namespace})
     actions = [IncludeLaunchDescription(
@@ -43,26 +41,23 @@ def setup(context):
         actions.extend([RegisterEventHandler(OnProcessExit(
             target_action=node, on_exit=[EmitEvent(event=Shutdown(reason=f"{label} exited"))])), node])
 
-    if visual:
-        critical(ComposableNodeContainer(
-            name="cuvslam_container", namespace=namespace, package="rclcpp_components",
-            executable="component_container", output="screen",
-            composable_node_descriptions=[ComposableNode(
-                name="visual_slam", namespace=namespace, package="isaac_ros_visual_slam",
-                plugin="nvidia::isaac_ros::visual_slam::VisualSlamNode",
-                parameters=[str(share / "config/cuvslam.yaml")],
-                remappings=[("visual_slam/image_0", "/camera/color/image_raw"),
-                            ("visual_slam/camera_info_0", "/camera/color/camera_info"),
-                            ("visual_slam/depth_0", "cuvslam/aligned_depth")])]), "cuVSLAM")
-        critical(Node(package="xlerobot_navigation", executable="cuvslam_depth_conversion",
-                      namespace=namespace, parameters=[{"use_sim_time": True}], output="screen"),
-                 "cuVSLAM depth conversion")
-    critical(Node(package="xlerobot_navigation",
-                  executable="vslam_localization" if visual else "sim_localization", namespace=namespace,
+    critical(ComposableNodeContainer(
+        name="cuvslam_container", namespace=namespace, package="rclcpp_components",
+        executable="component_container", output="screen",
+        composable_node_descriptions=[ComposableNode(
+            name="visual_slam", namespace=namespace, package="isaac_ros_visual_slam",
+            plugin="nvidia::isaac_ros::visual_slam::VisualSlamNode",
+            parameters=[str(share / "config/cuvslam.yaml")],
+            remappings=[("visual_slam/image_0", "/camera/color/image_raw"),
+                        ("visual_slam/camera_info_0", "/camera/color/camera_info"),
+                        ("visual_slam/depth_0", "cuvslam/aligned_depth")])]), "cuVSLAM")
+    critical(Node(package="xlerobot_navigation", executable="cuvslam_depth_conversion",
+                  namespace=namespace, parameters=[{"use_sim_time": True}], output="screen"),
+             "cuVSLAM depth conversion")
+    critical(Node(package="xlerobot_navigation", executable="vslam_localization", namespace=namespace,
                   parameters=[{"use_sim_time": True}], output="screen"), "Localization")
-    status_parameters = {"use_sim_time": True, "require_visual_tracking": visual}
     critical(Node(package="xlerobot_navigation", executable="navigation_guard", namespace=namespace,
-                  parameters=[status_parameters], output="screen"), "Navigation guard")
+                  parameters=[{"use_sim_time": True}], output="screen"), "Navigation guard")
     critical(Node(package="nvblox_ros", executable="nvblox_node", name="nvblox_node", namespace=namespace,
                   parameters=[str(share / "config/nvblox.yaml")],
                   remappings=[("camera_0/depth/image", "/camera/depth/image_rect_raw"),
@@ -87,7 +82,7 @@ def setup(context):
                                 "node_names": [name for _, name in servers],
                                 "bond_timeout": 10.0}], output="screen")
     ready = Node(package="xlerobot_navigation", executable="wait_for_mapping", namespace=namespace,
-                 parameters=[status_parameters], output="screen")
+                 parameters=[{"use_sim_time": True}], output="screen")
 
     def activate(event, _context):
         if event.returncode != 0:
@@ -107,8 +102,6 @@ def setup(context):
 def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument("namespace", default_value="xlerobot"),
-        DeclareLaunchArgument("localization", default_value="cuvslam", choices=["cuvslam", "ground_truth"],
-                              description="cuVSLAM RGBD estimation or simulation ground truth"),
         DeclareLaunchArgument("headless", default_value="false", choices=["true", "false"]),
         DeclareLaunchArgument("rviz", default_value="true", choices=["true", "false"]),
         DeclareLaunchArgument("foxglove", default_value="true", choices=["true", "false"]),

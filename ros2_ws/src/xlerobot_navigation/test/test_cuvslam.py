@@ -75,7 +75,7 @@ def test_visual_pose_removes_head_motion_and_retains_base_tilt():
 def test_visual_tracking_loss_blocks_even_with_fresh_pose_and_map(monkeypatch):
     monkeypatch.setattr("xlerobot_navigation.guard.time.monotonic", lambda: 100.)
     state = SimpleNamespace(
-        require_visual_tracking=True, tracking_ok=True,
+        tracking_ok=True,
         samples={key: (100., 10.) for key in ("depth", "map", "pose", "tracking")},
         get_clock=lambda: SimpleNamespace(now=lambda: Time(seconds=10)))
     assert MappingStatus.ready(state)

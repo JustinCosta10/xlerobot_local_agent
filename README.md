@@ -1,9 +1,9 @@
 # XLeRobot research
 
-Shared ROS 2 control for the two-wheel XLeRobot, with selectable Isaac Sim,
-physical STS3215, and mock backends.
+ROS 2 control and navigation for the two-wheel XLeRobot in Isaac Sim,
+with a mock backend for interface tests.
 
-- [`ros2_ws/`](ros2_ws/README.md): build, launch, controllers, hardware transport,
+- [`ros2_ws/`](ros2_ws/README.md): build, launch, controllers, navigation,
   diagnostics, and integration tests.
 - [`xlerobot_isaac_sim/`](xlerobot_isaac_sim/README.md): the DD robot USD, matching
   source URDF, 33 meshes, upstream license, and model validation.
@@ -31,4 +31,5 @@ For clicked-goal navigation with live depth mapping, see the
 [Nav2 + nvblox simulation setup](ros2_ws/README.md#clicked-goal-navigation-with-live-nvblox-mapping).
 
 Use `backend:=mock` for testing without a GPU or motors. See the workspace
-README for hardware calibration, public interfaces, and known limitations.
+README for public interfaces and known limitations. Physical motor and camera
+drivers are deferred until real-robot integration.

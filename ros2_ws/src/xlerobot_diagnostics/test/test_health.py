@@ -63,19 +63,14 @@ def test_unrelated_tf_does_not_pass():
     assert "tf" not in health.seen
 
 
-def test_hardware_needs_no_clock_but_requires_fresh_raw_feedback():
-    health = BridgeHealth(require_clock=False, expected_joints=["a", "b"],
-                          require_backend_feedback=True)
+def test_mock_needs_no_clock():
+    health = BridgeHealth(require_clock=False, expected_joints=["a", "b"])
     health.joints(["a", "b"], [0.0, 0.0], 0.0)
     health.transforms([("base_link", "chassis")], 0.0)
-    health.backend_feedback(["a"], [0.0], [0.0], 0.0)
-    assert health.problems(0.0) == ["waiting for backend_feedback"]
-    health.backend_feedback(["b", "a"], [0.0, 0.0], [0.0, 0.0], 0.0)
     assert not health.problems(0.1)
-    # A broadcaster repeating its previous sample must not conceal bus loss.
     health.joints(["a", "b"], [0.0, 0.0], 4.0)
     health.transforms([("base_link", "chassis")], 4.0)
-    assert health.problems(4.0) == ["backend_feedback stale (backend paused or disconnected)"]
+    assert not health.problems(4.0)
 
 
 @pytest.mark.parametrize("seconds", [0, -1, float("nan"), float("inf")])

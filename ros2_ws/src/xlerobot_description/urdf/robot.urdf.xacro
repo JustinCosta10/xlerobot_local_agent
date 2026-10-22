@@ -5,19 +5,11 @@
   <xacro:include filename="$(find xlerobot_description)/urdf/kinematics.urdf"/>
   <xacro:property name="joint_config" value="${xacro.load_yaml('$(find xlerobot_description)/config/joints.yaml')['joints']}"/>
   <!-- Isaac's native plugin derives its hardware interfaces from the USD. -->
-  <xacro:unless value="${'$(arg backend)' == 'isaac'}">
+  <xacro:if value="${'$(arg backend)' == 'mock'}">
   <ros2_control name="XLeRobotSystem" type="system">
     <hardware>
-      <xacro:if value="${'$(arg backend)' == 'mock'}">
-        <plugin>mock_components/GenericSystem</plugin>
-        <param name="calculate_dynamics">true</param>
-      </xacro:if>
-      <xacro:unless value="${'$(arg backend)' == 'mock'}">
-        <plugin>xlerobot_control/TopicSystem</plugin>
-        <param name="namespace">$(arg namespace)</param>
-        <param name="feedback_timeout">1.0</param>
-        <param name="startup_timeout">120.0</param>
-      </xacro:unless>
+      <plugin>mock_components/GenericSystem</plugin>
+      <param name="calculate_dynamics">true</param>
     </hardware>
     <xacro:macro name="control_joint" params="name">
       <joint name="${name}">
@@ -45,5 +37,5 @@
     <xacro:control_joint name="Wrist_Roll_R"/><xacro:control_joint name="Jaw_R"/>
     <xacro:control_joint name="head_pan_joint"/><xacro:control_joint name="head_tilt_joint"/>
   </ros2_control>
-  </xacro:unless>
+  </xacro:if>
 </robot>

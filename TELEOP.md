@@ -47,7 +47,7 @@ hardware wheel-limit considerations, see [SPEEDS_AND_TURN_RADIUS.md](SPEEDS_AND_
 
 The command publishes plain `Twist` on `/cmd_vel`. The existing launch adapter
 adds the correct timestamp and forwards it to the robot's stamped velocity input.
-The same command works with Isaac, mock, and hardware backends, including a custom
+The same command works with Isaac and mock backends, including a custom
 robot namespace; no `use_sim_time` flag is needed for teleop.
 
 If the robot is not running yet, start it in the first terminal:

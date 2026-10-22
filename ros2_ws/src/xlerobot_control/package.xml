@@ -1,12 +1,12 @@
 <?xml version="1.0"?>
 <package format="3">
   <name>xlerobot_control</name><version>0.2.0</version>
-  <description>Shared ros2_control controllers and verified joint transport for XLeRobot.</description>
+  <description>Shared ros2_control controllers and velocity command adapter for XLeRobot.</description>
   <maintainer email="justin@example.com">Justin</maintainer><license>Proprietary</license>
   <buildtool_depend>ament_cmake</buildtool_depend>
-  <depend>hardware_interface</depend><depend>pluginlib</depend>
+  <depend>pluginlib</depend>
   <depend>controller_interface</depend><depend version_gte="4.42.1">diff_drive_controller</depend>
-  <depend>rclcpp</depend><depend>rclcpp_lifecycle</depend><depend>sensor_msgs</depend>
+  <depend>rclcpp</depend><depend>rclcpp_lifecycle</depend>
   <exec_depend>controller_manager</exec_depend><exec_depend>joint_state_broadcaster</exec_depend>
   <exec_depend>joint_trajectory_controller</exec_depend>
   <exec_depend>rclpy</exec_depend><exec_depend>geometry_msgs</exec_depend>
