@@ -29,6 +29,8 @@ links, calculations, and the selected slow preset.
 
 For clicked-goal navigation with live depth mapping, see the
 [Nav2 + nvblox simulation setup](ros2_ws/README.md#clicked-goal-navigation-with-live-nvblox-mapping).
+Navigation also starts [YOLOE segmentation for Foxglove](ros2_ws/README.md#yoloe-segmentation-in-foxglove);
+use `yoloe:=false` to disable it.
 
 Use `backend:=mock` for testing without a GPU or motors. See the workspace
 README for public interfaces and known limitations. Physical motor and camera

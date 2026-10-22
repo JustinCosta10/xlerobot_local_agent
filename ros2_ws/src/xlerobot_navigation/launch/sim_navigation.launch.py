@@ -37,6 +37,15 @@ def setup(context):
                           "headless": value("headless"), "rviz": "false",
                           "foxglove": value("foxglove")}.items())]
 
+    if value("yoloe") == "true":
+        perception = Path(get_package_share_directory("xlerobot_perception"))
+        actions.append(IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(str(perception / "launch/yoloe.launch.py")),
+            launch_arguments={"namespace": namespace, "use_sim_time": "true",
+                              "image_topic": value("yoloe_image_topic"),
+                              "visualize": value("yoloe_visualize"),
+                              "config": value("yoloe_config")}.items()))
+
     def critical(node, label):
         actions.extend([RegisterEventHandler(OnProcessExit(
             target_action=node, on_exit=[EmitEvent(event=Shutdown(reason=f"{label} exited"))])), node])
@@ -105,5 +114,12 @@ def generate_launch_description():
         DeclareLaunchArgument("headless", default_value="false", choices=["true", "false"]),
         DeclareLaunchArgument("rviz", default_value="true", choices=["true", "false"]),
         DeclareLaunchArgument("foxglove", default_value="true", choices=["true", "false"]),
+        DeclareLaunchArgument("yoloe", default_value="true", choices=["true", "false"],
+                              description="Start broad YOLOE detection and class segmentation"),
+        DeclareLaunchArgument("yoloe_image_topic", default_value="/camera/color/image_raw"),
+        DeclareLaunchArgument("yoloe_visualize", default_value="true", choices=["true", "false"],
+                              description="Run the separate Foxglove segmentation renderer"),
+        DeclareLaunchArgument("yoloe_config", default_value=str(
+            Path(get_package_share_directory("xlerobot_perception")) / "config/yoloe.yaml")),
         OpaqueFunction(function=setup),
     ])

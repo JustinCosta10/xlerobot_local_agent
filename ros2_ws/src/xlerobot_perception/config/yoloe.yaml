@@ -1,0 +1,12 @@
+/**/yoloe:
+  ros__parameters:
+    device: "0"
+    rate_hz: 5.0
+    image_size: 640
+    confidence: 0.25
+    iou: 0.7
+    max_detections: 100
+
+/**/yoloe_visualizer:
+  ros__parameters:
+    mask_alpha: 0.45

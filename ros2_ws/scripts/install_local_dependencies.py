@@ -28,6 +28,8 @@ NAVIGATION_PACKAGES = [
     "ros-jazzy-nvblox-rviz-plugin", "cuda-cudart-13-0", "cuda-nvrtc-13-0",
     "libcublas-13-0",
     "ros-jazzy-isaac-ros-visual-slam",
+    "ros-jazzy-cv-bridge", "ros-jazzy-vision-msgs", "ros-jazzy-message-filters",
+    "python3-opencv",
 ]
 
 

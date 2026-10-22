@@ -217,6 +217,7 @@ Install the optional dependencies, then build and launch from `ros2_ws/`:
 
 ```bash
 python3 scripts/install_local_dependencies.py --navigation
+bash scripts/install_yoloe.sh
 ./scripts/build.sh
 source scripts/env.sh
 ros2 launch xlerobot_navigation sim_navigation.launch.py
@@ -359,6 +360,92 @@ odometry across four raw wheel-angle wraps. Ten navigation/Isaac unit tests pass
 These are short simulation acceptance checks; physical-camera performance and long-route drift are not yet
 validated.
 
+## YOLOE segmentation in Foxglove
+
+Navigation bringup starts YOLOE and its separate image renderer by default.
+Add `yoloe:=false` to disable both, or `yoloe_visualize:=false` to keep detections
+and semantic masks without rendering the overlay. The pipeline subscribes to
+`/camera/color/image_raw`; it does not depend on Isaac or a particular camera
+driver. Set `yoloe_image_topic:=/image_raw` if that is the physical camera's topic.
+
+The default is the small prompt-free `yoloe-11s-seg-pf.pt` checkpoint with its
+4,585-class vocabulary. It merges YOLOE's object masks into a class label map;
+undetected pixels remain unknown. This is object segmentation, not exhaustive
+labeling of floor, walls, and background. See the
+[YOLOE model documentation](https://docs.ultralytics.com/models/yoloe/).
+
+One-time setup on this workstation (already installed during implementation):
+
+```bash
+bash scripts/install_yoloe.sh
+./scripts/build.sh --packages-select xlerobot_perception xlerobot_navigation
+source scripts/env.sh
+```
+
+The installer keeps PyTorch 2.9.1/CUDA 12.8, torchvision 0.24.1, and Ultralytics
+8.4.184 in `.deps/yoloe`, and downloads weights to `.deps/models`.
+It leaves the system ROS and Isaac Python environments alone. Runtime uses local
+weights; a missing model produces a setup error. `XLEROBOT_YOLOE_PYTHON` and
+`XLEROBOT_YOLOE_MODEL` can override the paths set by `scripts/env.sh`.
+
+Start navigation normally:
+
+```bash
+source scripts/env.sh
+ros2 launch xlerobot_navigation sim_navigation.launch.py
+```
+
+Connect Foxglove to `ws://localhost:8765`, add an **Image** panel, and select
+`/xlerobot/yoloe/segmentation/image_raw/compressed`. It shows class-colored
+object masks, class names, and confidence scores. Add another Image panel on
+`/camera/color/image_raw` to compare with the original camera stream.
+
+For an already-running camera and Foxglove bridge, start only perception
+(do not also start a second copy through navigation):
+
+```bash
+ros2 launch xlerobot_perception yoloe.launch.py
+# For an Isaac camera, add use_sim_time:=true.
+# For a camera on /image_raw, add image_topic:=/image_raw.
+```
+
+Settings in [`config/yoloe.yaml`](src/xlerobot_perception/config/yoloe.yaml) apply
+at startup. Defaults are GPU 0, a 640-pixel inference size, confidence 0.25, and
+at most 5 inference starts per wall-clock second. Pass `yoloe_config:=/path/file.yaml`
+to navigation or `config:=/path/file.yaml` to standalone launch for a custom file.
+The subscriber holds only the newest pending image while inference runs; it never
+repeatedly processes a paused camera's last frame. A separate process renders
+and JPEG-encodes only when someone subscribes to an overlay topic.
+
+All frame outputs preserve the source image's timestamp and optical frame ID.
+The renderer synchronizes source, labels, and detections by exact timestamp.
+Topics below use the default `/xlerobot` namespace:
+
+| Topic suffix | Type and meaning |
+| --- | --- |
+| `yoloe/detections` | `vision_msgs/Detection2DArray`: boxes in original image pixels, class IDs, confidence; no tracking IDs or estimated 3D pose |
+| `yoloe/semantic_mask` | `sensor_msgs/Image`, `16UC1`, original image size; 0 is unknown, other values are model class index + 1 |
+| `yoloe/classes` | Latched `std_msgs/String` JSON containing `model`, `labels` (ID strings to names), and `overlap_policy` |
+| `yoloe/source_image` | Original processed image, published when subscribed; used by the renderer |
+| `yoloe/segmentation/image_raw` | Class-colored overlay, `sensor_msgs/Image` |
+| `yoloe/segmentation/image_raw/compressed` | JPEG overlay, `sensor_msgs/CompressedImage` |
+
+Detection `class_id` strings match the semantic mask values and `labels` keys.
+The highest-confidence detection wins where masks overlap. Empty results publish
+an empty detection array and all-zero label map, clearing old detections.
+YOLOE results are published for consumers; they do not change navigation behavior.
+
+Validation: six processing/ROS tests pass, including deliberate slow inference,
+newest-frame replacement, empty results, metadata delivery, and aligned raw/JPEG
+outputs. Real GPU inference on a bundled example image returned object masks.
+Live navigation and viewing in Foxglove await manual testing. Optional acceptance
+commands use an isolated ROS domain and stop their own launch:
+
+```bash
+python3 scripts/test_yoloe.py               # Known image published as RGB at 30 Hz
+python3 scripts/test_yoloe.py --navigation  # Full navigation with the Isaac camera
+```
+
 ## Packages and model ownership
 
 | Package | Responsibility |
@@ -369,6 +456,7 @@ validated.
 | `xlerobot_diagnostics` | Shared interface monitor and passive check |
 | `xlerobot_bringup` | Backend selection, controller startup, TF, diagnostics, optional RViz |
 | `xlerobot_navigation` | Nav2, nvblox, simulated localization, clicked goals, and navigation command guard |
+| `xlerobot_perception` | YOLOE detections, class label masks, and a separate Foxglove image renderer |
 
 The selected model is `../xlerobot_isaac_sim/xlerobot_dd.usd`: the recovered
 XLeRobot with detailed 5-inch tires, printed hubs, rear-only caster meshes,

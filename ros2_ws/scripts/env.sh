@@ -48,6 +48,9 @@ export RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}"
 # Use the same domain in all terminals; keep this simulation separate from domain 0.
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-42}"
 export ROS_LOG_DIR="${ROS_LOG_DIR:-$_xlerobot_ws/log/ros}"
+export XLEROBOT_YOLOE_PYTHON="${XLEROBOT_YOLOE_PYTHON:-$_xlerobot_ws/.deps/yoloe/bin/python}"
+export XLEROBOT_YOLOE_MODEL="${XLEROBOT_YOLOE_MODEL:-$_xlerobot_ws/.deps/models/yoloe-11s-seg-pf.pt}"
+export YOLO_CONFIG_DIR="${YOLO_CONFIG_DIR:-$_xlerobot_ws/.deps/yoloe-config}"
 case ":$PATH:" in
     *":$_xlerobot_ws/scripts:"*) ;;
     *) export PATH="$_xlerobot_ws/scripts:$PATH" ;;
