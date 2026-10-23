@@ -5,6 +5,8 @@ from threading import Condition
 import cv2
 import numpy as np
 from vision_msgs.msg import Detection2D, Detection2DArray, ObjectHypothesisWithPose
+from sensor_msgs.msg import Image
+from xlerobot_perception_interfaces.msg import InstanceMask, InstanceMaskArray
 
 
 class LatestFrame:
@@ -72,6 +74,28 @@ def class_color(label):
     hue = (int(label) * 47) % 180
     return tuple(int(v) for v in cv2.cvtColor(
         np.array([[[hue, 190, 245]]], dtype=np.uint8), cv2.COLOR_HSV2BGR)[0, 0])
+
+
+def instance_masks_from_arrays(header, shape, scores, classes, masks, names, revision):
+    """Preserve separate masks, including overlap, with explicit RGB pixel offsets."""
+    result = InstanceMaskArray(header=header, image_height=shape[0], image_width=shape[1],
+                               vocabulary_revision=revision)
+    if len(classes) != len(scores) or (len(scores) and (
+            masks is None or masks.shape != (len(scores), *shape))):
+        raise ValueError("Instance masks must match detection count and original image dimensions")
+    for index, (score, cls) in enumerate(zip(scores, classes)):
+        mask = masks[index] > .5
+        ys, xs = np.nonzero(mask)
+        if not len(xs):
+            continue
+        x, y, right, bottom = int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1
+        crop = np.ascontiguousarray(mask[y:bottom, x:right], dtype=np.uint8) * 255
+        message = Image(header=header, height=bottom - y, width=right - x,
+                        encoding="mono8", step=right - x, data=crop.tobytes())
+        result.instances.append(InstanceMask(
+            instance_id=index + 1, class_name=names[int(cls)], confidence=float(score),
+            x_offset=x, y_offset=y, mask=message))
+    return result
 
 
 def render_segmentation(image, labels, detections, names, alpha):

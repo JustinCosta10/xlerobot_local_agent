@@ -19,8 +19,9 @@ from sensor_msgs.msg import Image
 from std_msgs.msg import String
 from vision_msgs.msg import Detection2DArray
 from xlerobot_perception_interfaces.srv import SetVocabulary
+from xlerobot_perception_interfaces.msg import InstanceMaskArray
 
-from .processing import LatestFrame, messages_from_arrays
+from .processing import LatestFrame, instance_masks_from_arrays, messages_from_arrays
 from .vocabulary import DEFAULT_CLASSES, PromptModel, Vocabulary, validate_classes
 
 
@@ -75,6 +76,7 @@ class YoloeNode(Node):
         self.state = self.snapshot()
         self.detections = self.create_publisher(Detection2DArray, "yoloe/detections", 1)
         self.semantic = self.create_publisher(Image, "yoloe/semantic_mask", 1)
+        self.instances = self.create_publisher(InstanceMaskArray, "yoloe/instance_masks", 1)
         self.source = self.create_publisher(Image, "yoloe/source_image", 1)
         metadata_qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
         self.classes = self.create_publisher(String, "yoloe/classes", metadata_qos)
@@ -175,6 +177,10 @@ class YoloeNode(Node):
                     break
                 self.detections.publish(detections)
                 self.semantic.publish(semantic)
+                if self.instances.get_subscription_count():
+                    self.instances.publish(instance_masks_from_arrays(
+                        message.header, image.shape[:2], result.boxes.conf, result.boxes.cls,
+                        masks, self.vocabulary.active, self.vocabulary.revision))
                 if self.source.get_subscription_count():
                     self.source.publish(message)
         except Exception as error:

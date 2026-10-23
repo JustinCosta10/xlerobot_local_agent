@@ -1,0 +1,15 @@
+# Empty label/object_id matches all; label matching is normalized and exact.
+string label
+string object_id
+# Empty means current session; "*" includes historical sessions.
+string session_id
+bool include_stale
+bool include_images
+# 0 selects 100; maximum 200.
+uint32 limit
+---
+bool success
+string message
+string current_session_id
+string database_path
+TrackedObject[] objects

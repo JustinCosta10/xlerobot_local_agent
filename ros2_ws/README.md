@@ -491,8 +491,9 @@ Topics below use the default `/xlerobot` namespace:
 | --- | --- |
 | `yoloe/detections` | `vision_msgs/Detection2DArray`: boxes in original image pixels, class IDs, confidence; no tracking IDs or estimated 3D pose |
 | `yoloe/semantic_mask` | `sensor_msgs/Image`, `16UC1`, original image size; 0 is unknown, other values are stable class IDs |
+| `yoloe/instance_masks` | `xlerobot_perception_interfaces/InstanceMaskArray`: separate cropped `mono8` masks, original RGB pixel offsets, class names, scores, and vocabulary revision; published when subscribed |
 | `yoloe/classes` | Latched `std_msgs/String` JSON containing `model`, `revision`, `labels`, `active_classes`, `active_class_ids`, and `overlap_policy` |
-| `yoloe/source_image` | Original processed image, published when subscribed; used by the renderer |
+| `yoloe/source_image` | Original processed image, published when subscribed; used by the renderer and object mapper |
 | `yoloe/segmentation/image_raw` | Class-colored overlay, `sensor_msgs/Image` |
 | `yoloe/segmentation/image_raw/compressed` | JPEG overlay, `sensor_msgs/CompressedImage` |
 
@@ -506,9 +507,15 @@ The highest-confidence detection wins where masks overlap. Empty results publish
 an empty detection array and all-zero label map, clearing old detections.
 YOLOE results are published for consumers; they do not change navigation behavior.
 
-Validation: 16 processing/ROS tests pass, covering deliberate slow inference,
+Instance IDs are local to one image, and remain distinct even when several
+objects share a class. Each mask preserves its own pixels, including overlaps;
+the semantic overlay remains class-colored. Mask offsets refer to the original
+RGB pixel grid, not the network's resized input. Labels travel with each mask,
+so a live vocabulary update cannot reinterpret an older detection.
+
+Validation covers deliberate slow inference,
 newest-frame replacement, empty results, aligned raw/JPEG outputs, live service
-updates, stable IDs, and rejection/failure handling. Real CPU inference on a
+updates, stable IDs, separate same-class masks, and rejection/failure handling. Real CPU inference on a
 bundled example image passed repeated person/bus/cube vocabulary switches after
 model warmup. Cube/color accuracy in the user's scene awaits manual testing.
 Optional acceptance commands use an isolated ROS domain and stop their own launch:
@@ -517,6 +524,108 @@ Optional acceptance commands use an isolated ROS domain and stop their own launc
 python3 scripts/test_yoloe.py               # Live switch to person/bus on a known image at 30 Hz
 python3 scripts/test_yoloe.py --navigation  # Full navigation with the Isaac camera
 ```
+
+## Object positions and persistent object memory
+
+Navigation bringup starts a separate `object_mapper` alongside YOLOE. It combines
+individual masks with `/camera/aligned_depth_to_color/image_raw_float`,
+`/camera/color/camera_info`, and camera-to-`map` TF at the original RGB capture
+time. It buffers depth while inference runs and accepts at most 5 ms timestamp
+difference by default. It never substitutes the newest depth or latest TF for a
+delayed detection. Missing data/TF expire after 2 seconds; the mapper processes
+the newest complete frame. This work runs outside the detector process.
+
+Start after building and re-sourcing the environment:
+
+```bash
+./scripts/build.sh --packages-select xlerobot_perception_interfaces xlerobot_perception xlerobot_navigation
+source scripts/env.sh
+ros2 launch xlerobot_navigation sim_navigation.launch.py
+```
+
+Use `object_map:=false` to disable storage while keeping detections, or
+`yoloe:=false` to disable both. Standalone `yoloe.launch.py` enables storage with
+`object_map:=true`; it needs an aligned depth stream, calibration, and a map TF.
+Navigation arguments `object_depth_topic`, `object_camera_info_topic`,
+`object_database`, and `object_map_config` override the inputs/storage/settings.
+The standalone launch uses `depth_topic` and `camera_info_topic` for those inputs.
+
+The database is `ros2_ws/.data/objects.sqlite3`, outside version control.
+`XLEROBOT_OBJECT_DATABASE` changes its default path. SQLite stores confirmed
+objects, observation history, and a representative JPEG crop inside the database.
+The `sessions`, `objects`, and `observations` tables are available for inspection
+with a SQLite client. Object records include class name, a persistent UUID,
+map/session ID, position in meters, visible-surface extent/spread, detection
+confidence, depth quality, observation count, and first/last-seen capture times.
+The crop comes from the highest-confidence accepted observation of that track.
+
+Defaults in `src/xlerobot_perception/config/object_mapping.yaml`:
+
+- A detection needs confidence at least 0.35 and at least 20 valid interior depth
+  pixels. A one-pixel mask erosion, depth-range checks, and a robust depth filter
+  reject edges, invalid pixels, and background contamination. At least half of
+  the eroded mask must retain valid depth. Higher-confidence masks own overlapping
+  depth pixels so they cannot contribute to multiple objects in one frame.
+- Matching uses class name and an 8 cm map-position gate, with one-to-one
+  assignment per frame. Three observations within 2 seconds confirm a new object;
+  isolated tentative detections expire. Eight cubes can produce eight records.
+- Confirmed positions are smoothed on each accepted observation. After 10 seconds
+  without an observation, an object becomes stale; it is retained, not deleted.
+  Removing its class from the active vocabulary also leaves its record intact.
+- The first three observations are retained; subsequent history is sampled at
+  1 Hz per object. Pose/count updates still happen for every accepted frame.
+
+In Foxglove, add a **3D** panel with fixed frame `map` and enable
+`/xlerobot/object_map/markers`. Green dots and labels mark confirmed visible-surface
+positions; stale records turn gray. `/xlerobot/object_map/objects` publishes the
+current session's confirmed objects, including their stale flags, without JPEGs.
+These markers are object-location estimates, not full geometry or grasp targets.
+
+List/find objects with the query service; an empty label returns all classes:
+
+```bash
+ros2 service call /xlerobot/object_map/query \
+  xlerobot_perception_interfaces/srv/QueryObjects \
+  "{label: 'cube', include_stale: true, limit: 20}"
+```
+
+In Foxglove's **Service Call** panel, select `/xlerobot/object_map/query` and use
+`{"label": "cube", "include_stale": true, "limit": 20}`. Responses include the
+database path and current session ID. Set `include_images: true` to return the
+representative crops, or `object_id` to retrieve one known object. Requests return
+at most 200 records; the default limit is 100. By default, queries exclude stale
+records and select only the current session.
+
+Each mapper restart, backward ROS-clock jump, or change to the navigation
+`map -> vslam_map` origin creates a new session. Historical coordinates are never
+automatically reused in the new map. Query a specific `session_id`, or `"*"` for
+all sessions, with `include_stale: true` to inspect history. Historical objects
+are always marked stale and are not published into the current Foxglove map.
+For a different localization stack, configure `map_origin_frame`, or explicitly
+start a new session when resetting its map:
+
+```bash
+ros2 service call /xlerobot/object_map/new_session std_srvs/srv/Trigger '{}'
+```
+
+This clears the active object map and preserves all prior database records.
+
+Limits: locations describe the median of visible object surface points, not the
+true object center or a six-degree-of-freedom grasp pose. Surface spread is not
+calibrated position uncertainty. Spatial matching cannot reliably identify
+identical objects after they swap places, or follow large moves outside the
+association gate. SLAM drift/loop corrections can also shift measured locations;
+this version does not re-optimize stored objects with the SLAM pose graph. Real
+hardware needs color-registered depth (`32FC1` meters or `16UC1` millimeters),
+matching optical frames and resolution, and valid RGB intrinsics. Binned/cropped
+camera configurations require adjusted intrinsics before use. No simulator object
+poses or labels are used for detection, association, or stored positions.
+
+Validation includes masked projection with known camera geometry, depth outlier
+rejection, timestamp tolerance, eight same-class tracks, database persistence,
+and real DDS/TF/service tests with delayed masks, wrong-time depth, historical
+camera transforms, crops, markers, and session resets. Live detection and position
+accuracy on the simulated table still require scene testing.
 
 ## Packages and model ownership
 

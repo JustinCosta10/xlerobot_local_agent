@@ -16,6 +16,7 @@ from sensor_msgs.msg import CompressedImage, Image
 from std_msgs.msg import String
 from vision_msgs.msg import Detection2DArray
 from xlerobot_perception_interfaces.srv import SetVocabulary
+from xlerobot_perception_interfaces.msg import InstanceMaskArray
 
 from xlerobot_perception.detector import YoloeNode
 from xlerobot_perception.visualizer import YoloeVisualizer
@@ -70,11 +71,12 @@ def test_slow_inference_keeps_latest_and_publishes_aligned_outputs():
     viewer = YoloeVisualizer(context=context, namespace="test")
     probe = Node("probe", context=context, namespace="test")
     bridge = CvBridge()
-    received = {name: [] for name in ("detections", "mask", "raw", "compressed", "classes")}
+    received = {name: [] for name in ("detections", "mask", "raw", "compressed", "classes", "instances")}
     subscriptions = [probe.create_subscription(msg_type, topic, received[name].append, qos)
                      for name, msg_type, topic, qos in (
                          ("detections", Detection2DArray, "yoloe/detections", 10),
                          ("mask", Image, "yoloe/semantic_mask", 10),
+                         ("instances", InstanceMaskArray, "yoloe/instance_masks", 10),
                          ("raw", Image, "yoloe/segmentation/image_raw", 10),
                          ("compressed", CompressedImage, "yoloe/segmentation/image_raw/compressed", 10),
                          ("classes", String, "yoloe/classes", QoSProfile(
@@ -103,15 +105,19 @@ def test_slow_inference_keeps_latest_and_publishes_aligned_outputs():
         model.release.set()
         wait_for(lambda: len(received["compressed"]) >= 2)
         assert [call[0] for call in model.calls] == [1, 20]
-        for name in ("detections", "mask", "raw", "compressed"):
+        wait_for(lambda: len(received["instances"]) >= 2)
+        for name in ("detections", "mask", "raw", "compressed", "instances"):
             assert [m.header.stamp.sec for m in received[name]] == [2, 21]
             assert all(m.header.frame_id == "camera_optical" for m in received[name])
         assert "cup" in received["classes"][0].data
         assert (bridge.imgmsg_to_cv2(received["mask"][-1]) == 1).all()
+        assert received["instances"][-1].instances[0].class_name == "cup"
         publish(0)
         wait_for(lambda: len(received["compressed"]) >= 3)
         assert not received["detections"][-1].detections
         assert not bridge.imgmsg_to_cv2(received["mask"][-1]).any()
+        wait_for(lambda: len(received["instances"]) >= 3)
+        assert not received["instances"][-1].instances
         time.sleep(.3)
         assert len(model.calls) == 3  # Never re-infer an old frame during a camera pause.
         assert all(b[1] - a[1] >= .19 for a, b in zip(model.calls, model.calls[1:]))

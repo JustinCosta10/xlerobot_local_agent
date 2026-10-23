@@ -1,5 +1,6 @@
 """Isaac robot, live nvblox mapping, Nav2, and RViz clicked goals."""
 
+import os
 from pathlib import Path
 
 from ament_index_python.packages import get_package_share_directory
@@ -44,6 +45,11 @@ def setup(context):
             launch_arguments={"namespace": namespace, "use_sim_time": "true",
                               "image_topic": value("yoloe_image_topic"),
                               "visualize": value("yoloe_visualize"),
+                              "object_map": value("object_map"),
+                              "object_map_config": value("object_map_config"),
+                              "object_database": value("object_database"),
+                              "depth_topic": value("object_depth_topic"),
+                              "camera_info_topic": value("object_camera_info_topic"),
                               "config": value("yoloe_config")}.items()))
 
     def critical(node, label):
@@ -121,5 +127,13 @@ def generate_launch_description():
                               description="Run the separate Foxglove segmentation renderer"),
         DeclareLaunchArgument("yoloe_config", default_value=str(
             Path(get_package_share_directory("xlerobot_perception")) / "config/yoloe.yaml")),
+        DeclareLaunchArgument("object_map", default_value="true", choices=["true", "false"],
+                              description="Track and store segmented objects in SQLite (requires yoloe)"),
+        DeclareLaunchArgument("object_map_config", default_value=str(
+            Path(get_package_share_directory("xlerobot_perception")) / "config/object_mapping.yaml")),
+        DeclareLaunchArgument("object_database", default_value=os.environ.get(
+            "XLEROBOT_OBJECT_DATABASE", str(Path.home() / ".ros/xlerobot/objects.sqlite3"))),
+        DeclareLaunchArgument("object_depth_topic", default_value="/camera/aligned_depth_to_color/image_raw_float"),
+        DeclareLaunchArgument("object_camera_info_topic", default_value="/camera/color/camera_info"),
         OpaqueFunction(function=setup),
     ])

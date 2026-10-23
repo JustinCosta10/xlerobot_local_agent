@@ -17,5 +17,6 @@ setup(
     entry_points={"console_scripts": [
         "yoloe_node = xlerobot_perception.detector:main",
         "yoloe_visualizer = xlerobot_perception.visualizer:main",
+        "object_mapper = xlerobot_perception.object_mapper:main",
     ]},
 )

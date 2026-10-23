@@ -1,0 +1,22 @@
+/**/object_mapper:
+  ros__parameters:
+    map_frame: map
+    # A changed map -> vslam_map static transform starts a new session.
+    # Set empty for another localization stack; call new_session on map resets.
+    map_origin_frame: vslam_map
+    max_wait_s: 2.0
+    sync_tolerance_s: 0.005
+    depth_cache_frames: 90
+    min_confidence: 0.35
+    mask_erosion_pixels: 1
+    min_depth_pixels: 20
+    min_valid_depth_fraction: 0.5
+    min_depth_m: 0.1
+    max_depth_m: 8.0
+    confirmation_observations: 3
+    confirmation_window_s: 2.0
+    association_distance_m: 0.08
+    stale_after_s: 10.0
+    # Pose/count updates happen for every accepted frame. History is sampled at
+    # 1 Hz per confirmed object, plus all observations used for confirmation.
+    history_period_s: 1.0
