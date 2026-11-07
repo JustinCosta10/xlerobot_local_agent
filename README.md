@@ -7,6 +7,9 @@ with a mock backend for interface tests.
   diagnostics, and integration tests.
 - [`xlerobot_isaac_sim/`](xlerobot_isaac_sim/README.md): the DD robot USD, matching
   source URDF, 33 meshes, upstream license, and model validation.
+- [Perception terminal agent](ros2_ws/src/xlerobot_agent/README.md): OpenAI planning,
+  YOLOE vocabulary control, and confirmed-object observation/query, with an offline
+  demo. See the [design plan](AGENTIC_PERCEPTION_PLAN.md) for scope and later steps.
 
 From `ros2_ws/`:
 

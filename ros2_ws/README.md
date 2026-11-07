@@ -629,6 +629,12 @@ accuracy on the simulated table still require scene testing.
 
 ## Packages and model ownership
 
+The optional [perception terminal agent](src/xlerobot_agent/README.md) attaches to
+the running YOLOE/object-map services. It uses OpenAI function calling to plan,
+change vocabulary, and observe/query confirmed objects. `--demo` runs with a
+scripted model and fake perception, without credentials or API calls. Navigation
+is not exposed to the agent. See its README for build and launch commands.
+
 | Package | Responsibility |
 | --- | --- |
 | `xlerobot_description` | Generated URDF, model joint limits, portable mesh references |
@@ -639,6 +645,7 @@ accuracy on the simulated table still require scene testing.
 | `xlerobot_navigation` | Nav2, nvblox, simulated localization, clicked goals, and navigation command guard |
 | `xlerobot_perception` | YOLOE detections, class label masks, and a separate Foxglove image renderer |
 | `xlerobot_perception_interfaces` | SetVocabulary service for live target changes |
+| `xlerobot_agent` | Interactive terminal, configurable OpenAI adapter, and confirmed-object perception tools |
 
 The selected model is `../xlerobot_isaac_sim/xlerobot_dd.usd`: the recovered
 XLeRobot with detailed 5-inch tires, printed hubs, rear-only caster meshes,

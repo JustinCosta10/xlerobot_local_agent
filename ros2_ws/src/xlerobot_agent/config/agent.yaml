@@ -1,0 +1,11 @@
+# Plain application config, not ROS parameter YAML. --model overrides this value.
+provider: openai
+model: gpt-6-astra
+endpoint: https://api.openai.com/v1/responses
+reasoning_effort: low
+request_timeout_s: 60.0
+max_output_tokens: 4096
+max_tool_rounds: 12
+namespace: xlerobot
+use_sim_time: true
+service_timeout_s: 5.0
