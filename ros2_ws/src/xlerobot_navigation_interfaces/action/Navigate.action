@@ -1,0 +1,14 @@
+# All destination interfaces resolve to a base pose in the current map session.
+geometry_msgs/PoseStamped pose
+string session_id
+float64 timeout_s
+---
+string code
+string message
+bool stop_confirmed
+bool final_pose_valid
+geometry_msgs/PoseStamped final_pose
+---
+geometry_msgs/PoseStamped current_pose
+float32 distance_remaining
+float64 elapsed_s

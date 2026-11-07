@@ -1,7 +1,6 @@
-"""The complete allowlist. No motion, shell, arbitrary ROS, or code-execution tools."""
+"""Perception allowlist and optional supervised simulation navigation."""
 
 import json
-import math
 
 from jsonschema import Draft202012Validator
 from xlerobot_perception.vocabulary import validate_classes
@@ -28,21 +27,40 @@ SCHEMAS = [
         "classes": {"type": "array", "minItems": 1, "maxItems": 128,
                     "items": {"type": "string"}},
     }),
-    schema("observe_scene", "Wait without commanding motion for freshly observed CONFIRMED tracked objects "
-           "in the active categories. Never returns unconfirmed detections. No result is not proof of absence.", {
-        "duration_s": {"type": ["number", "null"], "minimum": 0.1, "maximum": 10,
-                       "description": "Observation window in seconds; null uses 2 seconds."},
-    }),
+    schema("observe_scene", "Read confirmed stored objects and their last known locations from the current "
+           "map session immediately, including stale records and categories outside the active vocabulary. "
+           "No observation window or age cutoff. Ages describe the evidence; they do not hide objects.", {}),
     schema("query_objects", "Query confirmed tracked objects in the current map session. Stored records "
            "are not necessarily visible now; inspect observation age. Null fields use documented defaults.", {
         "label": {"type": ["string", "null"], "maxLength": 120,
                   "description": "Exact normalized label; null means all labels."},
         "object_id": {"type": ["string", "null"], "maxLength": 128,
                       "description": "Exact UUID returned earlier; null means any object."},
-        "include_stale": {"type": ["boolean", "null"], "description": "Default false."},
+        "include_stale": {"type": ["boolean", "null"],
+                          "description": "Default true: retain stored objects regardless of age. "
+                                         "False explicitly restricts results to non-stale records."},
         "limit": {"type": ["integer", "null"], "minimum": 1, "maximum": 200,
                   "description": "Default 100. At the limit, completeness is unknown."},
     }),
+]
+
+NAVIGATION_SCHEMAS = [
+    schema("get_navigation_state", "Read current base pose in map, session_id, readiness, and last motion result. "
+           "Read this before choosing a navigation goal. Coordinates are meters and yaw is radians.", {}),
+    schema("navigate", "Navigate the BASE to an explicit grounded pose in the current map session. "
+           "Waits for completion and confirmed stopping; Ctrl+C cancels. This is not an object approach "
+           "planner: object surface positions cannot be used directly as base destinations. "
+           "Do not blindly retry failed or uncertain moves. Simulation only.", {
+        "x": {"type": "number", "exclusiveMinimum": -8, "exclusiveMaximum": 8},
+        "y": {"type": "number", "exclusiveMinimum": -8, "exclusiveMaximum": 8},
+        "yaw": {"type": "number", "minimum": -3.141592653589793, "maximum": 3.141592653589793},
+        "session_id": {"type": "string", "minLength": 1, "maxLength": 128,
+                       "description": "Exact current session_id from get_navigation_state."},
+        "timeout_s": {"type": ["number", "null"], "minimum": 1, "maximum": 300,
+                      "description": "Wall-clock motion deadline; null uses 120 seconds."},
+    }),
+    schema("cancel_navigation", "Cancel this agent's navigation goal. Does not require a plan. "
+           "Inspect stop_confirmed; sending cancellation alone does not establish a stop.", {}),
 ]
 
 
@@ -50,7 +68,8 @@ class ToolRegistry:
     def __init__(self, robot):
         self.robot = robot
         self.plan = []
-        self.validators = {s["name"]: Draft202012Validator(s["parameters"]) for s in SCHEMAS}
+        self.schemas = SCHEMAS + (NAVIGATION_SCHEMAS if getattr(robot, "navigation_enabled", False) else [])
+        self.validators = {s["name"]: Draft202012Validator(s["parameters"]) for s in self.schemas}
 
     def dispatch(self, name, arguments):
         if name not in self.validators:
@@ -65,18 +84,22 @@ class ToolRegistry:
                     raise ValueError("Plan steps cannot be blank.")
                 self.plan = args["steps"]
                 return {"success": True, "steps": self.plan}
+            if name == "get_navigation_state":
+                return self.robot.get_navigation_state()
+            if name == "cancel_navigation":
+                return self.robot.cancel_navigation()
             if not self.plan:
-                raise ToolError("PLAN_REQUIRED", "Call update_plan before perception tools for this instruction.")
+                raise ToolError("PLAN_REQUIRED", "Call update_plan before robot tools for this instruction.")
+            if name == "navigate":
+                args["timeout_s"] = 120. if args["timeout_s"] is None else args["timeout_s"]
+                return self.robot.navigate(**args)
             if name == "set_perception_vocabulary":
                 classes = validate_classes(args["classes"])
                 return self.robot.set_vocabulary(classes)
             if name == "observe_scene":
-                duration = 2. if args["duration_s"] is None else args["duration_s"]
-                if not math.isfinite(duration):
-                    raise ValueError("Observation duration must be finite.")
-                return self.robot.observe(duration)
+                return self.robot.observe()
             return self.robot.query(label=args["label"] or "", object_id=args["object_id"] or "",
-                                    include_stale=args["include_stale"] or False,
+                                    include_stale=True if args["include_stale"] is None else args["include_stale"],
                                     limit=100 if args["limit"] is None else args["limit"])
         except (ValueError, TypeError):
             return {"success": False, "code": "INVALID_ARGUMENT",

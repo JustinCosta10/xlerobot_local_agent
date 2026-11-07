@@ -1,4 +1,5 @@
-from xlerobot_navigation.guard import fresh
+from types import SimpleNamespace
+from xlerobot_navigation.guard import NavigationGuard, fresh
 
 
 def test_clock_pause_and_old_or_future_data_cannot_authorize_motion():
@@ -7,3 +8,15 @@ def test_clock_pause_and_old_or_future_data_cannot_authorize_motion():
     assert not fresh((10, 99), 10.1, 100, 0.5)  # recently received old data
     assert not fresh((10, 101), 10.1, 100, 0.5)  # wrong time domain
     assert not fresh(None, 10, 100, 0.5)
+
+
+def test_supervisor_crash_expires_guard_permission(monkeypatch):
+    monkeypatch.setattr("xlerobot_navigation.guard.time.monotonic", lambda: 10.)
+    state = SimpleNamespace(require_permit=True, permit_at=None)
+    assert not NavigationGuard.permitted(state)
+    state.permit_at = 9.8
+    assert NavigationGuard.permitted(state)
+    state.permit_at = 9.6
+    assert not NavigationGuard.permitted(state)
+    state.require_permit = False
+    assert NavigationGuard.permitted(state)  # Ordinary RViz mode keeps its original behavior.

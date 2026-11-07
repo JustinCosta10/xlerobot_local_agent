@@ -35,6 +35,42 @@ def test_model_chooses_followup_using_actual_result_and_matching_call_id():
     assert names == ["update_plan", "query_objects", "query_objects"]
 
 
+def test_stored_objects_and_locations_reach_model_without_a_new_sighting():
+    robot = FakePerception()
+    robot.observed_at -= 60 * 10**9
+    robot.set_vocabulary(["blue cube"])
+
+    class Model:
+        def next_turn(self, history, schemas, instructions):
+            results = [t for t in history if t.role == "tool"]
+            if not results:
+                return call("update_plan", {"steps": ["Read stored objects and locations."]}, "plan")
+            if len(results) == 1:
+                return call("observe_scene", {}, "map")
+            assert results[-1].call_id == "map"
+            result = json.loads(results[-1].text)
+            assert result["success"] and result["count"] == 2
+            cube = next(item for item in result["objects"] if item["label"] == "cube")
+            assert cube["object_id"] == "fake-cube-1"
+            assert cube["position_m"] == [1., .2, .8]
+            assert cube["stale"] and cube["observation_age_s"] >= 60
+            return Turn("assistant", text="Stored cube at [1.0, 0.2, 0.8] in map.")
+
+    agent = Agent(Model(), ToolRegistry(robot))
+    assert "Stored cube" in agent.run("Where is the cube?")
+
+
+@pytest.mark.parametrize("include_stale,count", [(None, 1), (True, 1), (False, 0)])
+def test_query_defaults_to_stored_records_regardless_of_age(include_stale, count):
+    robot = FakePerception()
+    robot.observed_at -= 60 * 10**9
+    registry = ToolRegistry(robot)
+    registry.plan = ["Read stored cube"]
+    result = registry.dispatch("query_objects", json.dumps(dict(
+        label="cube", object_id=None, include_stale=include_stale, limit=None)))
+    assert result["success"] and result["count"] == count
+
+
 @pytest.mark.parametrize("name,args", [
     ("set_perception_vocabulary", '{"classes": []}'),
     ("set_perception_vocabulary", '{"classes": [" Cube", "cube"]}'),
@@ -42,12 +78,14 @@ def test_model_chooses_followup_using_actual_result_and_matching_call_id():
     ("observe_scene", '{"duration_s": NaN}'),
     ("observe_scene", '{"duration_s": 1e999}'),
     ("observe_scene", '{"duration_s": true}'),
+    ("observe_scene", '{"duration_s": null}'),
     ("query_objects", '{"label": "cube", "object_id": null, "include_stale": null, "limit": 201}'),
     ("query_objects", '{}'),
     ("query_objects", '{broken'),
 ])
 def test_invalid_arguments_never_reach_robot(name, args):
     class Forbidden:
+        navigation_enabled = False
         def __getattr__(self, _name):
             pytest.fail("Invalid arguments dispatched")
     registry = ToolRegistry(Forbidden())
@@ -59,7 +97,7 @@ def test_allowlist_and_plan_gate_and_existing_normalization():
     robot = FakePerception()
     registry = ToolRegistry(robot)
     assert registry.dispatch("navigate_to_object", "{}")["code"] == "UNKNOWN_TOOL"
-    assert registry.dispatch("observe_scene", '{"duration_s": null}')["code"] == "PLAN_REQUIRED"
+    assert registry.dispatch("observe_scene", '{}')["code"] == "PLAN_REQUIRED"
     registry.dispatch("update_plan", '{"steps": ["Set categories"]}')
     result = registry.dispatch("set_perception_vocabulary", '{"classes": [" CUBE ", "new category"]}')
     assert result["classes"] == ["cube", "new category"]
@@ -67,7 +105,7 @@ def test_allowlist_and_plan_gate_and_existing_normalization():
 
 def test_interrupt_fills_remaining_call_results_without_dispatch_and_followup_can_run():
     class Robot(FakePerception):
-        def observe(self, duration_s):
+        def observe(self):
             raise KeyboardInterrupt()
         def set_vocabulary(self, classes):
             pytest.fail("Call after interruption dispatched")
@@ -76,7 +114,7 @@ def test_interrupt_fills_remaining_call_results_without_dispatch_and_followup_ca
         def next_turn(self, history, tools, instructions):
             if not any(t.role == "tool" for t in history):
                 return call("update_plan", {"steps": ["Observe"]})
-            return Turn("assistant", calls=[ToolCall("observe", "observe_scene", '{"duration_s": 1}'),
+            return Turn("assistant", calls=[ToolCall("observe", "observe_scene", '{}'),
                                             ToolCall("late", "set_perception_vocabulary", '{"classes": ["cube"]}')])
 
     agent = Agent(Model(), ToolRegistry(Robot()))
@@ -112,3 +150,36 @@ def test_offline_demo_runs_and_labels_evidence():
     agent = Agent(ScriptedProvider(), ToolRegistry(FakePerception()))
     assert "OFFLINE SCRIPTED DEMO" in agent.run("Demo")
     assert "OFFLINE SCRIPTED DEMO" in agent.run("Follow-up")
+
+
+@pytest.mark.parametrize("field,value", [("x", 8), ("y", -8), ("yaw", 4), ("x", True),
+                                        ("session_id", ""), ("timeout_s", 0), ("timeout_s", 301)])
+def test_invalid_navigation_arguments_never_dispatch(field, value):
+    class Robot(FakePerception):
+        navigation_enabled = True
+        def navigate(self, **kwargs):
+            pytest.fail("Invalid navigation dispatched")
+    registry = ToolRegistry(Robot())
+    registry.plan = ["Navigate"]
+    args = dict(x=0, y=0, yaw=0, session_id="map-one", timeout_s=None)
+    args[field] = value
+    assert registry.dispatch("navigate", json.dumps(args))["code"] == "INVALID_ARGUMENT"
+
+
+def test_navigation_opt_in_plan_gate_and_emergency_tools():
+    class Robot(FakePerception):
+        navigation_enabled = True
+        def get_navigation_state(self):
+            return dict(success=True, session_id="map-one")
+        def cancel_navigation(self):
+            return dict(success=True, code="CANCELED")
+        def navigate(self, **kwargs):
+            return dict(success=True, arguments=kwargs)
+    assert ToolRegistry(FakePerception()).dispatch("navigate", "{}")["code"] == "UNKNOWN_TOOL"
+    registry = ToolRegistry(Robot())
+    assert registry.dispatch("get_navigation_state", "{}")["session_id"] == "map-one"
+    assert registry.dispatch("cancel_navigation", "{}")["code"] == "CANCELED"
+    args = json.dumps(dict(x=0, y=0, yaw=0, session_id="map-one", timeout_s=None))
+    assert registry.dispatch("navigate", args)["code"] == "PLAN_REQUIRED"
+    registry.plan = ["Navigate"]
+    assert registry.dispatch("navigate", args)["arguments"]["timeout_s"] == 120.

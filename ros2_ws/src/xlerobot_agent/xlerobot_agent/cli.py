@@ -38,6 +38,8 @@ def load_config(path):
             raise ValueError(f"{name} must be a positive integer.")
     if type(config.get("use_sim_time")) is not bool:
         raise ValueError("use_sim_time must be true or false.")
+    if type(config.get("enable_navigation", False)) is not bool:
+        raise ValueError("enable_navigation must be true or false.")
     if config.get("reasoning_effort") not in (None, "", "none", "minimal", "low", "medium", "high", "xhigh", "max"):
         raise ValueError("Invalid reasoning_effort; use a value supported by your chosen model.")
     return config
@@ -67,6 +69,9 @@ class Events:
             print(event["text"], flush=True)
         elif kind == "session":
             print(f"Mode: {event['mode']} | model: {event['model']} | namespace: {event['namespace']}", flush=True)
+        elif kind == "navigation_progress":
+            print(f"Navigation: {event['distance_remaining_m']:.2f} m remaining; "
+                  f"{event['elapsed_s']:.1f} s elapsed", flush=True)
 
     def close(self):
         if self.stream:
@@ -74,10 +79,11 @@ class Events:
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Plan and call XLeRobot perception tools; no motion tools.")
+    parser = argparse.ArgumentParser(description="XLeRobot perception and optional supervised simulation navigation.")
     parser.add_argument("--config", type=Path, default=default_config())
     parser.add_argument("--model", help="OpenAI model ID; overrides YAML")
     parser.add_argument("--namespace", help="ROS namespace; overrides YAML")
+    parser.add_argument("--enable-navigation", action="store_true", help="Enable supervised simulation navigation tools")
     clock = parser.add_mutually_exclusive_group()
     clock.add_argument("--wall-time", action="store_true", help="Use wall time instead of simulation time")
     clock.add_argument("--sim-time", action="store_true")
@@ -95,6 +101,9 @@ def main(argv=None):
             config["namespace"] = args.namespace
         if args.wall_time or args.sim_time:
             config["use_sim_time"] = args.sim_time
+        enable_navigation = args.enable_navigation or config.get("enable_navigation", False)
+        if enable_navigation and (not config["use_sim_time"] or args.demo or args.fake_perception):
+            raise ValueError("Navigation requires live ROS simulation; incompatible with --wall-time, --demo, --fake-perception.")
         if args.demo:
             from .demo import ScriptedProvider
             provider = ScriptedProvider()
@@ -111,10 +120,13 @@ def main(argv=None):
             robot = FakePerception()
         else:
             from .ros_adapter import RosAdapter
-            robot = RosAdapter(config["namespace"], config["use_sim_time"], config["service_timeout_s"])
+            robot = RosAdapter(config["namespace"], config["use_sim_time"], config["service_timeout_s"],
+                               enable_navigation=enable_navigation)
         mode = "scripted_model_fake_perception" if args.demo else (
             "openai_fake_perception" if args.fake_perception else "openai_live_ros_perception")
         events = Events(args.trace)
+        if enable_navigation:
+            robot.navigation.emit = events
         events(dict(event="session", mode=mode, model="scripted" if args.demo else config["model"],
                     namespace=config["namespace"], use_sim_time=config["use_sim_time"],
                     max_tool_rounds=config["max_tool_rounds"], max_output_tokens=config["max_output_tokens"]))
@@ -123,8 +135,10 @@ def main(argv=None):
             print("Offline fixed script: always demonstrates cubes/mugs; it does not interpret your words.")
         if args.once:
             return 0 if agent.run(args.once) is not None else 1
-        print("Enter a perception request. /new clears conversation; /quit exits. Ctrl+C interrupts.\n"
-              "Last accepted YOLOE vocabulary stays active. No motion tools are available.")
+        print("Enter a robot request. /new clears conversation; /quit exits. Ctrl+C interrupts.\n"
+              "Last accepted YOLOE vocabulary stays active. " +
+              ("Supervised simulation navigation enabled; Ctrl+C cancels movement."
+               if enable_navigation else "No motion tools are available."))
         try:
             import readline  # noqa: F401 — terminal editing/history, never persisted
         except ImportError:

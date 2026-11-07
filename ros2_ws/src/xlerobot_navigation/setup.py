@@ -19,6 +19,7 @@ setup(
         "vslam_localization = xlerobot_navigation.vslam_localization:main",
         "cuvslam_depth_conversion = xlerobot_navigation.depth_conversion:main",
         "navigation_guard = xlerobot_navigation.guard:main",
+        "navigation_supervisor = xlerobot_navigation.supervisor:main",
         "wait_for_mapping = xlerobot_navigation.guard:wait_for_mapping",
     ]},
 )

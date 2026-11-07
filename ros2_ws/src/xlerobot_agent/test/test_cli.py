@@ -1,4 +1,5 @@
 import json
+import pytest
 
 from xlerobot_agent.cli import main
 
@@ -24,3 +25,10 @@ def test_terminal_followup_new_and_quit(monkeypatch, capsys):
     output = capsys.readouterr().out
     assert output.count("OFFLINE SCRIPTED DEMO") == 2
     assert "Conversation cleared" in output
+
+
+@pytest.mark.parametrize("mode", ["--demo", "--fake-perception", "--wall-time"])
+def test_navigation_rejects_non_simulation_modes_before_provider_setup(mode, monkeypatch, capsys):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    assert main(["--enable-navigation", mode, "--once", "navigate"]) == 1
+    assert "Navigation requires live ROS simulation" in capsys.readouterr().err

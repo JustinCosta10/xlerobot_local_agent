@@ -9,11 +9,16 @@
   <exec_depend>ament_index_python</exec_depend>
   <exec_depend>rclpy</exec_depend>
   <exec_depend>std_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>unique_identifier_msgs</exec_depend>
+  <exec_depend>xlerobot_navigation_interfaces</exec_depend>
   <exec_depend>xlerobot_perception</exec_depend>
   <exec_depend>xlerobot_perception_interfaces</exec_depend>
   <exec_depend>python3-yaml</exec_depend>
   <exec_depend>python3-jsonschema</exec_depend>
   <test_depend>python3-pytest</test_depend>
   <test_depend>rosgraph_msgs</test_depend>
+  <test_depend>xlerobot_navigation</test_depend>
+  <test_depend>nav2_msgs</test_depend>
   <export><build_type>ament_python</build_type></export>
 </package>

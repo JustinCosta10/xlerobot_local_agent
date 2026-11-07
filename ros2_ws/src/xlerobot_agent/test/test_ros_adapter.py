@@ -10,6 +10,7 @@ from rclpy.context import Context
 from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile
+from rclpy.time import Time
 from std_msgs.msg import String
 from xlerobot_perception_interfaces.msg import InstanceMask, InstanceMaskArray, TrackedObject, TrackedObjectArray
 from xlerobot_perception_interfaces.srv import QueryObjects, SetVocabulary
@@ -17,7 +18,7 @@ from xlerobot_perception_interfaces.srv import QueryObjects, SetVocabulary
 from xlerobot_agent.ros_adapter import RosAdapter
 from xlerobot_agent.agent import Agent
 from xlerobot_agent.demo import ScriptedProvider
-from xlerobot_agent.tools import ToolError, ToolRegistry
+from xlerobot_agent.tools import ToolRegistry
 
 
 def wait_for(predicate, timeout=5):
@@ -32,6 +33,9 @@ class PerceptionPeer(Node):
         super().__init__("fake_perception", namespace="agent_test", context=context)
         self.classes, self.revision, self.session = ["cube"], 1, "session-one"
         self.confirmed = True
+        self.label = "cube"
+        self.stale = False
+        self.object_session = self.session
         self.fresh = True
         self.enabled = True
         self.last_stamp = self.get_clock().now().to_msg()
@@ -77,9 +81,11 @@ class PerceptionPeer(Node):
         self.requests.append(request)
         response.success, response.current_session_id = True, self.session
         response.database_path = "/private/path/must-not-be-returned.sqlite3"
-        if self.confirmed and (not request.label or request.label == "cube"):
-            item = TrackedObject(object_id="confirmed-cube-uuid", session_id=self.session,
-                                 label="cube", observation_count=3, confidence=.9)
+        if (self.confirmed and (not request.label or request.label == self.label)
+                and (not request.object_id or request.object_id == "confirmed-cube-uuid")
+                and (request.include_stale or not self.stale)):
+            item = TrackedObject(object_id="confirmed-cube-uuid", session_id=self.object_session,
+                                 label=self.label, observation_count=3, confidence=.9, stale=self.stale)
             item.header.stamp, item.header.frame_id = self.last_stamp, "map"
             item.position.x, item.position.z = 1., .8
             response.objects = [item]
@@ -99,7 +105,7 @@ def ros_pair():
     try:
         robot = RosAdapter(namespace="agent_test", use_sim_time=False, service_timeout_s=2., context=context)
         wait_for(lambda: robot.status()["vocabulary"] is not None and robot.query_client.service_is_ready()
-                 and robot.vocabulary_client.service_is_ready() and peer.mask_pub.get_subscription_count())
+                 and robot.vocabulary_client.service_is_ready())
         yield robot, peer
     finally:
         if robot:
@@ -110,17 +116,20 @@ def ros_pair():
         context.try_shutdown()
 
 
-def test_real_services_and_fresh_confirmed_objects_only(ros_pair):
+def test_real_services_and_stored_confirmed_objects_only(ros_pair):
     robot, peer = ros_pair
     result = robot.set_vocabulary(["cube", "mug"])
     assert result["success"] and result["revision"] == 2
-    result = robot.observe(.2)
+    result = robot.observe()
     assert result["success"]
+    assert result["code"] == "OBJECT_MAP"
     assert result["count"] == 1
     assert result["objects"][0]["object_id"] == "confirmed-cube-uuid"
+    assert result["objects"][0]["position_m"] == [1., 0., .8]
     assert "tentative-secret" not in json.dumps(result)
     assert "database_path" not in result
     assert all(not request.include_images and request.session_id == "" for request in peer.requests)
+    assert all(request.include_stale for request in peer.requests)
     assert robot.query(limit=1)["completeness"] == "unknown"
 
 
@@ -140,49 +149,61 @@ def test_scripted_model_runs_whole_loop_through_real_ros_bindings(ros_pair):
 def test_raw_detection_without_confirmation_is_not_exposed(ros_pair):
     robot, peer = ros_pair
     peer.confirmed = False
-    result = robot.observe(.15)
+    result = robot.observe()
     assert result["success"]
     assert result["objects"] == []
-    assert result["perception_activity"] == "fresh_detector_frames"
-    assert "No freshly observed confirmed" in result["message"]
+    assert "No confirmed objects stored" in result["message"]
     assert "tentative-secret" not in json.dumps(result)
 
 
-def test_republished_old_object_and_offline_perception_are_distinct(ros_pair):
+@pytest.mark.parametrize("age_s,stale", [(5, False), (60, True)])
+def test_stored_blue_cube_available_without_detector_or_vocabulary_metadata(ros_pair, age_s, stale):
     robot, peer = ros_pair
-    peer.fresh = False
-    time.sleep(.05)
-    result = robot.observe(.15)
-    assert result["success"] and not result["objects"]
-    assert robot.query()["count"] == 1  # Stored confirmed object still exists.
     peer.enabled = False
-    time.sleep(.05)
-    result = robot.observe(.15)
-    assert not result["success"] and result["code"] == "NO_FRESH_OBSERVATION"
-    assert not result["objects"]
+    peer.fresh = False
+    peer.label, peer.stale = "blue cube", stale
+    peer.last_stamp = Time(nanoseconds=peer.get_clock().now().nanoseconds - age_s * 10**9).to_msg()
+    peer.publish_metadata_enabled = False
+    with robot.lock:
+        robot.metadata = None
+    result = robot.observe()
+    assert result["success"] and result["count"] == 1
+    item = result["objects"][0]
+    assert item["label"] == "blue cube"
+    assert item["position_m"] == [1., 0., .8]
+    assert item["stale"] is stale
+    assert item["observation_age_s"] >= age_s
+    assert "observation_start_ns" not in result
+    assert "vocabulary_revision" not in result  # Stored evidence has no revision provenance.
 
 
-def test_inactive_category_not_returned_as_observed(ros_pair):
+def test_stale_filter_is_opt_in_for_queries(ros_pair):
+    robot, peer = ros_pair
+    peer.enabled = False
+    peer.stale = True
+    assert robot.query(label="cube")["count"] == 1
+    assert robot.query(label="cube", include_stale=False)["count"] == 0
+    assert robot.query(label="mug")["count"] == 0
+    assert robot.query(object_id="confirmed-cube-uuid")["count"] == 1
+    assert robot.query(object_id="not-stored")["count"] == 0
+
+
+def test_vocabulary_change_does_not_hide_stored_objects(ros_pair):
     robot, peer = ros_pair
     robot.set_vocabulary(["mug"])
-    result = robot.observe(.15)
-    assert result["success"] and not result["objects"]
+    result = robot.observe()
+    assert result["success"] and result["count"] == 1
+    assert result["objects"][0]["label"] == "cube"
     assert robot.query(label="cube")["count"] == 1
 
 
-@pytest.mark.parametrize("change", ["session", "revision"])
-def test_observation_change_is_reported(ros_pair, change):
+def test_previous_map_session_locations_are_not_reused(ros_pair):
     robot, peer = ros_pair
-    def alter():
-        time.sleep(.08)
-        if change == "session":
-            peer.session = "new-session"
-        else:
-            peer.revision += 1
-    thread = Thread(target=alter)
-    thread.start()
-    try:
-        with pytest.raises(ToolError, match="changed"):
-            robot.observe(.4)
-    finally:
-        thread.join()
+    assert robot.observe()["count"] == 1
+    peer.session = "new-session"
+    # Even if the service returns an old record, its location belongs to the old map.
+    result = robot.observe()
+    assert result["session_id"] == "new-session"
+    assert result["objects"] == []
+    assert result["omitted_invalid_records"] == 1
+    assert result["completeness"] == "unknown"

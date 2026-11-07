@@ -3,6 +3,7 @@
 import os
 from pathlib import Path
 import re
+import tempfile
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
@@ -15,6 +16,15 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node, PushROSNamespace
 import xacro
 import yaml
+
+
+def stop_launch(context, reason):
+    # Multiple critical processes exit during teardown. Request shutdown once
+    # across both the bringup and navigation launch descriptions.
+    if context.is_shutdown or context.launch_configurations.get("xlerobot_shutdown_requested"):
+        return []
+    context.launch_configurations["xlerobot_shutdown_requested"] = "true"
+    return [EmitEvent(event=Shutdown(reason=reason))]
 
 
 def setup(context):
@@ -34,10 +44,25 @@ def setup(context):
     description = xacro.process_file(str(description_share / "urdf/robot.urdf.xacro"),
                                      mappings={"backend": backend, "namespace": namespace}).toxml()
     actions = []
+    exclusive = value("exclusive_navigation") == "true"
+    cleanup = None
+    if exclusive:
+        if backend != "isaac" or value("start_sim") != "true":
+            raise RuntimeError("Exclusive agent navigation requires this launch to start Isaac")
+        config = yaml.safe_load(Path(controllers).read_text())
+        args = config["/**/controller_manager"]["ros__parameters"]["base_controller"]["node_options_args"]
+        args[args.index("~/cmd_vel:=cmd_vel")] = "~/cmd_vel:=cmd_vel_guarded"
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", prefix="xlerobot-agent-", delete=False) as stream:
+            yaml.safe_dump(config, stream)
+            controllers = stream.name
+
+        def cleanup(_event, _context):
+            Path(controllers).unlink(missing_ok=True)
+            return []
 
     def critical(process, label):
-        actions.extend([RegisterEventHandler(OnProcessExit(target_action=process, on_exit=[
-            EmitEvent(event=Shutdown(reason=f"{label} exited"))])), process])
+        actions.extend([RegisterEventHandler(OnProcessExit(target_action=process,
+            on_exit=lambda _event, ctx: stop_launch(ctx, f"{label} exited"))), process])
 
     if backend == "isaac" and value("start_sim") == "true":
         python = Path(value("isaac_sim_path")) / "python.sh"
@@ -55,8 +80,12 @@ def setup(context):
             command.append("--navigation-scene")
         if value("state_log"):
             command += ["--state-log", value("state_log")]
-        critical(ExecuteProcess(cmd=command, output="screen", sigterm_timeout="20",
-                                sigkill_timeout="10"), "Isaac Sim")
+        simulator = ExecuteProcess(cmd=command, output="screen", sigterm_timeout="20", sigkill_timeout="10")
+        if cleanup is not None:
+            # Isaac reads the YAML after initializing Kit. Keep it until Isaac
+            # exits, even if another node fails during that initialization.
+            actions.append(RegisterEventHandler(OnProcessExit(target_action=simulator, on_exit=cleanup)))
+        critical(simulator, "Isaac Sim")
 
     critical(Node(package="robot_state_publisher", executable="robot_state_publisher",
                   namespace=namespace, parameters=[{"robot_description": description,
@@ -68,9 +97,10 @@ def setup(context):
         critical(Node(package="controller_manager", executable="ros2_control_node",
                       namespace=namespace, parameters=[controllers, {"use_sim_time": sim_time}],
                       output="screen"), "Controller manager")
-    critical(Node(package="xlerobot_control", executable="cmd_vel_adapter", namespace=namespace,
-                  parameters=[{"use_sim_time": sim_time}],
-                  output="screen"), "cmd_vel adapter")
+    if not exclusive:
+        critical(Node(package="xlerobot_control", executable="cmd_vel_adapter", namespace=namespace,
+                      parameters=[{"use_sim_time": sim_time}],
+                      output="screen"), "cmd_vel adapter")
     # Both managers already load controllers.yaml and pass it to their controllers.
     # Keep remaps there too: the spawner's -p/--controller-ros-args paths use
     # unbounded set_parameters calls, which can hang on a lost DDS response.
@@ -84,8 +114,9 @@ def setup(context):
 
     def check_spawn(event, _context):
         if event.returncode != 0:
-            return [EmitEvent(event=Shutdown(reason="Controller activation failed"))]
-        return [LogInfo(msg=f"Robot controllers ready: /cmd_vel (Twist) or /{namespace}/cmd_vel (TwistStamped)")]
+            return stop_launch(_context, "Controller activation failed")
+        return [LogInfo(msg=("Robot controllers ready: exclusive supervised navigation" if exclusive else
+                             f"Robot controllers ready: /cmd_vel (Twist) or /{namespace}/cmd_vel (TwistStamped)"))]
 
     actions += [RegisterEventHandler(OnProcessExit(target_action=spawner, on_exit=check_spawn)), spawner,
                 Node(package="xlerobot_diagnostics", executable="bridge_monitor", namespace=namespace,
@@ -112,6 +143,7 @@ def setup(context):
 def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument("backend", default_value="isaac", choices=["isaac", "mock"]),
+        DeclareLaunchArgument("exclusive_navigation", default_value="false", choices=["true", "false"]),
         DeclareLaunchArgument("namespace", default_value="xlerobot"),
         DeclareLaunchArgument("isaac_sim_path", default_value=os.environ.get("ISAAC_SIM_PATH", str(Path.home() / "isaacsim"))),
         DeclareLaunchArgument("asset", default_value=os.environ.get("XLEROBOT_ASSET", "")),

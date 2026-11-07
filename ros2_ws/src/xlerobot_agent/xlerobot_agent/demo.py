@@ -26,26 +26,26 @@ class FakePerception:
                     mechanism="runtime_text_prompts", classes=self.vocabulary.active,
                     class_ids=self.vocabulary.class_ids, revision=self.vocabulary.revision)
 
-    def query(self, label="", object_id="", include_stale=False, limit=100):
+    def query(self, label="", object_id="", include_stale=True, limit=100):
+        now = time.time_ns()
+        stale = now - self.observed_at > 10 * 10**9
         objects = [dict(object_id=f"fake-{name}-1", session_id="fake-session", label=name,
                         tracking_state="confirmed", frame_id="map", position_m=pos,
                         observation_stamp_ns=self.observed_at,
-                        observation_age_s=(time.time_ns() - self.observed_at) / 1e9,
-                        stale=False, observation_count=3)
+                        observation_age_s=(now - self.observed_at) / 1e9,
+                        stale=stale, observation_count=3)
                    for name, pos in [("cube", [1., .2, .8]), ("mug", [1., .5, .8])]
-                   if (not label or name == label) and (not object_id or object_id == f"fake-{name}-1")]
+                   if (not label or name == label) and (not object_id or object_id == f"fake-{name}-1")
+                   and (include_stale or not stale)]
         return dict(success=True, session_id="fake-session", objects=objects[:limit],
                     count=len(objects[:limit]), limit=limit,
                     completeness="unknown" if len(objects) >= limit else "complete",
                     scope="FAKE confirmed records")
 
-    def observe(self, duration_s):
-        self.observed_at = time.time_ns()
-        result = self.query()
-        result["objects"] = [item for item in result["objects"] if item["label"] in self.vocabulary.active]
-        result.update(count=len(result["objects"]), vocabulary_revision=self.vocabulary.revision,
-                      perception_activity="fake_frames", code="OBSERVED",
-                      message="FAKE confirmed objects; no camera or waiting used.")
+    def observe(self):
+        result = self.query(include_stale=True, limit=200)
+        result.update(code="OBJECT_MAP", evidence="fake_stored_confirmed_objects",
+                      message="FAKE stored confirmed objects; no camera or waiting used.")
         return result
 
     def close(self):
@@ -64,7 +64,7 @@ class ScriptedProvider:
             ("update_plan", {"steps": ["Set cube and mug prompts.", "Observe confirmed objects.",
                                       "Query cube details and report the returned evidence."]}),
             ("set_perception_vocabulary", {"classes": ["cube", "mug"]}),
-            ("observe_scene", {"duration_s": .1}),
+            ("observe_scene", {}),
             ("query_objects", {"label": "cube", "object_id": None, "include_stale": None, "limit": None}),
         ]
         if results and not json.loads(results[-1].text).get("success"):

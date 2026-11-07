@@ -11,19 +11,19 @@ def test_responses_continuation_and_strict_tools_without_network():
     sent = []
     opaque = {"type": "reasoning", "id": "r1", "summary": [], "encrypted_content": "opaque-fixture"}
     function = {"type": "function_call", "call_id": "c1", "name": "observe_scene",
-                "arguments": '{"duration_s": 2}'}
+                "arguments": '{}'}
     def transport(payload):
         sent.append(payload)
         if len(sent) == 1:
             return {"status": "completed", "output": [opaque, function]}
         return {"status": "completed", "output": [{"type": "message", "role": "assistant",
-                "content": [{"type": "output_text", "text": "No freshly confirmed objects."}]}]}
+                "content": [{"type": "output_text", "text": "No confirmed objects stored."}]}]}
     provider = OpenAIProvider("test-model", transport=transport)
     history = [Turn("user", text="Observe")]
     turn = provider.next_turn(history, SCHEMAS, "policy")
     assert turn.calls[0].call_id == "c1"
     history += [turn, Turn("tool", call_id="c1", text=json.dumps({"objects": []}))]
-    assert provider.next_turn(history, SCHEMAS, "policy").text == "No freshly confirmed objects."
+    assert provider.next_turn(history, SCHEMAS, "policy").text == "No confirmed objects stored."
     assert sent[1]["input"][1:3] == [opaque, function]
     assert sent[1]["input"][3]["call_id"] == "c1"
     assert sent[0]["parallel_tool_calls"] is False

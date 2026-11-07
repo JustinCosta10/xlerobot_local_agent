@@ -632,8 +632,11 @@ accuracy on the simulated table still require scene testing.
 The optional [perception terminal agent](src/xlerobot_agent/README.md) attaches to
 the running YOLOE/object-map services. It uses OpenAI function calling to plan,
 change vocabulary, and observe/query confirmed objects. `--demo` runs with a
-scripted model and fake perception, without credentials or API calls. Navigation
-is not exposed to the agent. See its README for build and launch commands.
+scripted model and fake perception, without credentials or API calls. Supervised
+simulation navigation is opt-in with `agent_navigation:=true` at navigation launch
+and `--enable-navigation` in the agent. This exclusive mode routes controller
+velocity through a leased supervisor/guard path and disables manual velocity inputs
+and RViz goals. See the agent README for build, launch, cancellation, and limitations.
 
 | Package | Responsibility |
 | --- | --- |
@@ -643,9 +646,10 @@ is not exposed to the agent. See its README for build and launch commands.
 | `xlerobot_diagnostics` | Shared interface monitor and passive check |
 | `xlerobot_bringup` | Backend selection, controller startup, TF, diagnostics, optional RViz |
 | `xlerobot_navigation` | Nav2, nvblox, simulated localization, clicked goals, and navigation command guard |
+| `xlerobot_navigation_interfaces` | Session-bound supervised navigation action |
 | `xlerobot_perception` | YOLOE detections, class label masks, and a separate Foxglove image renderer |
 | `xlerobot_perception_interfaces` | SetVocabulary service for live target changes |
-| `xlerobot_agent` | Interactive terminal, configurable OpenAI adapter, and confirmed-object perception tools |
+| `xlerobot_agent` | Interactive terminal, configurable OpenAI adapter, confirmed-object tools, and optional supervised simulation navigation |
 
 The selected model is `../xlerobot_isaac_sim/xlerobot_dd.usd`: the recovered
 XLeRobot with detailed 5-inch tires, printed hubs, rear-only caster meshes,

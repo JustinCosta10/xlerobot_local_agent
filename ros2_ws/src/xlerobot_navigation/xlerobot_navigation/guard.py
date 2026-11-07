@@ -11,6 +11,7 @@ from rclpy.clock import Clock, ClockType
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Image
+from std_msgs.msg import Bool
 
 
 def stamp_seconds(stamp):
@@ -23,8 +24,8 @@ def fresh(sample, wall_now, sim_now, timeout):
 
 
 class MappingStatus(Node):
-    def __init__(self, name):
-        super().__init__(name)
+    def __init__(self, name, **kwargs):
+        super().__init__(name, **kwargs)
         self.samples = {}
         self.create_subscription(Image, "/camera/depth/image_rect_raw",
                                  lambda m: self.record("depth", m), qos_profile_sensor_data)
@@ -56,8 +57,11 @@ class MappingStatus(Node):
 
 
 class NavigationGuard(MappingStatus):
-    def __init__(self):
-        super().__init__("navigation_guard")
+    def __init__(self, **kwargs):
+        super().__init__("navigation_guard", **kwargs)
+        self.require_permit = self.declare_parameter("require_navigation_permit", False).value
+        self.permit_at = None
+        self.create_subscription(Bool, "agent_navigation/permit", self.on_permit, 1)
         self.output = self.create_publisher(TwistStamped, "cmd_vel", 1)
         self.command = None
         self.received_at = None
@@ -70,12 +74,19 @@ class NavigationGuard(MappingStatus):
         self.command = message
         self.received_at = (time.monotonic(), stamp_seconds(message.header.stamp))
 
+    def on_permit(self, message):
+        self.permit_at = time.monotonic() if message.data else None
+
+    def permitted(self):
+        return (not self.require_permit or
+                (self.permit_at is not None and time.monotonic() - self.permit_at <= .3))
+
     def tick(self):
         if self.command is None:
             return
         now = self.get_clock().now()
         valid = fresh(self.received_at, time.monotonic(), now.nanoseconds * 1e-9, 0.5)
-        ready = self.ready()
+        ready = self.ready() and self.permitted()
         output = TwistStamped()
         output.header.stamp = now.to_msg()
         output.header.frame_id = "base_link"

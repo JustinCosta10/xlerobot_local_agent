@@ -9,3 +9,4 @@ max_tool_rounds: 12
 namespace: xlerobot
 use_sim_time: true
 service_timeout_s: 5.0
+enable_navigation: false
