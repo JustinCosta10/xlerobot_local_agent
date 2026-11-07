@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise supervised pose navigation in isolated Isaac simulation; no model/API."""
+"""Exercise point, relative and object navigation in isolated Isaac; no model/API."""
 
 import argparse
 import math
@@ -65,6 +65,35 @@ def check(process):
         worker.join(timeout=10.)
         assert stopped["stop_confirmed"] and results and results[0]["code"] == "CANCELED"
         print("PASS: explicit cancellation terminated Nav2 and confirmed a stop", flush=True)
+        wait(lambda: robot.get_navigation_state().get("ready"))
+        relative = robot.navigate_relative(forward_m=.3, left_m=0., yaw_delta_rad=0.,
+            session_id=robot.get_navigation_state()["session_id"], timeout_s=90.)
+        print(relative, flush=True)
+        assert relative["success"] and relative["stop_confirmed"], relative
+        origin, goal = relative["target"]["starting_pose"], relative["resolved_pose"]
+        assert abs(math.hypot(goal["x"]-origin["x"], goal["y"]-origin["y"])-.3) < 1e-6
+        print("PASS: relative offset resolved from measured starting pose and reached", flush=True)
+        objects = []
+        def observed():
+            objects[:] = robot.query()["objects"]
+            return bool(objects)
+        wait(observed, 90)
+        wait(lambda: robot.get_navigation_state().get("ready"))
+        base = robot.get_navigation_state()["pose"]
+        target = min(objects, key=lambda o: (o["label"] != "cube",
+            math.hypot(o["position_m"][0]-base["x"], o["position_m"][1]-base["y"])))
+        print(f"Approaching stored {target['label']} {target['object_id']} at {target['position_m']}", flush=True)
+        approach = robot.navigate_to_object(object_id=target["object_id"], standoff_m=.8,
+            session_id=target["session_id"], timeout_s=120.)
+        print(approach, flush=True)
+        assert approach["success"] and approach["stop_confirmed"], approach
+        assert .8-1e-6 <= approach["target"]["selected_standoff_m"] <= 1.6+1e-6
+        final = approach["final_pose"]
+        object_point = approach["target"]["object_position_m"]
+        facing = math.atan2(object_point[1]-final["y"], object_point[0]-final["x"])
+        assert abs(math.atan2(math.sin(facing-final["yaw"]), math.cos(facing-final["yaw"]))) < .3
+        print(f"PASS: clear object approach reached; {approach['target']['final_standoff_m']:.3f} m "
+              "from the stored object position, facing it", flush=True)
     finally:
         robot.close()
 

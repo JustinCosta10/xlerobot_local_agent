@@ -78,21 +78,33 @@ class NavigationClient:
         return future.result()
 
     def navigate(self, x, y, yaw, session_id, timeout_s):
-        if self.pending is not None or self.active is not None:
-            raise ToolError("BUSY", "A navigation request is already pending or active.")
-        state = self.status()
-        if not state.get("ready"):
-            raise ToolError("NOT_READY", state.get("reason") or state.get("message", "Navigation unavailable."))
-        if session_id != state.get("session_id"):
-            raise ToolError("MAP_CHANGED", "Read get_navigation_state and use its current session_id.")
-        if not self.client.server_is_ready():
-            raise ToolError("NOT_READY", "Navigation supervisor action is unavailable.")
         request = Navigate.Goal(session_id=session_id, timeout_s=float(timeout_s))
         request.pose.header.frame_id = "map"
         request.pose.header.stamp = self.node.get_clock().now().to_msg()
         request.pose.pose.position.x, request.pose.pose.position.y = float(x), float(y)
         request.pose.pose.orientation.z = math.sin(yaw / 2)
         request.pose.pose.orientation.w = math.cos(yaw / 2)
+        return self.run(request)
+
+    def navigate_relative(self, forward_m, left_m, yaw_delta_rad, session_id, timeout_s):
+        return self.run(Navigate.Goal(target_type=Navigate.Goal.RELATIVE, session_id=session_id,
+            timeout_s=float(timeout_s), forward_m=float(forward_m), left_m=float(left_m),
+            yaw_delta_rad=float(yaw_delta_rad)))
+
+    def navigate_to_object(self, object_id, standoff_m, session_id, timeout_s):
+        return self.run(Navigate.Goal(target_type=Navigate.Goal.OBJECT, session_id=session_id,
+            timeout_s=float(timeout_s), object_id=object_id, standoff_m=float(standoff_m)))
+
+    def run(self, request):
+        if self.pending is not None or self.active is not None:
+            raise ToolError("BUSY", "A navigation request is already pending or active.")
+        state = self.status()
+        if not state.get("ready"):
+            raise ToolError("NOT_READY", state.get("reason") or state.get("message", "Navigation unavailable."))
+        if request.session_id != state.get("session_id"):
+            raise ToolError("MAP_CHANGED", "Read get_navigation_state and use its current session_id.")
+        if not self.client.server_is_ready():
+            raise ToolError("NOT_READY", "Navigation supervisor action is unavailable.")
         operation_id = uuid4()
         self.interrupt_result = None
         self.last_feedback = 0.
@@ -105,11 +117,13 @@ class NavigationClient:
                 return dict(success=False, code="REJECTED", operation_id=operation_id.hex,
                             message="Supervisor rejected goal; inspect navigation state before retrying.")
             self.result = self.active.get_result_async()
-            response = self.wait(self.result, time.monotonic() + timeout_s + 7., operation_id.hex)
+            response = self.wait(self.result, time.monotonic() + request.timeout_s + 7., operation_id.hex)
             result = response.result
             return dict(success=result.code == "SUCCEEDED", code=result.code, message=result.message,
                         operation_id=operation_id.hex, stop_confirmed=result.stop_confirmed,
-                        final_pose=pose_data(result.final_pose) if result.final_pose_valid else None)
+                        final_pose=pose_data(result.final_pose) if result.final_pose_valid else None,
+                        resolved_pose=pose_data(result.resolved_pose) if result.resolved_pose_valid else None,
+                        target=json.loads(result.target_details_json or "{}"))
         except ToolError as error:
             self.interrupt_result = self.cancel()
             return dict(success=False, code=error.code, message=str(error),

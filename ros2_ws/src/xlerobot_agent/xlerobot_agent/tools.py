@@ -48,8 +48,8 @@ NAVIGATION_SCHEMAS = [
     schema("get_navigation_state", "Read current base pose in map, session_id, readiness, and last motion result. "
            "Read this before choosing a navigation goal. Coordinates are meters and yaw is radians.", {}),
     schema("navigate", "Navigate the BASE to an explicit grounded pose in the current map session. "
-           "Waits for completion and confirmed stopping; Ctrl+C cancels. This is not an object approach "
-           "planner: object surface positions cannot be used directly as base destinations. "
+           "Waits for completion and confirmed stopping; Ctrl+C cancels. Use navigate_to_object for "
+           "objects: their surface positions cannot be used directly as base destinations. "
            "Do not blindly retry failed or uncertain moves. Simulation only.", {
         "x": {"type": "number", "exclusiveMinimum": -8, "exclusiveMaximum": 8},
         "y": {"type": "number", "exclusiveMinimum": -8, "exclusiveMaximum": 8},
@@ -58,6 +58,32 @@ NAVIGATION_SCHEMAS = [
                        "description": "Exact current session_id from get_navigation_state."},
         "timeout_s": {"type": ["number", "null"], "minimum": 1, "maximum": 300,
                       "description": "Wall-clock motion deadline; null uses 120 seconds."},
+    }),
+    schema("navigate_relative", "Navigate to an offset resolved ONCE from the measured starting base pose. "
+           "Positive forward_m is forward; positive left_m is left; positive yaw_delta_rad turns counterclockwise. "
+           "Nav2 may turn and take a route to the destination; this is not a straight-line or sideways drive command. "
+           "Returns starting and resolved poses. Nav2 goal tolerances apply; inspect the measured final pose. "
+           "Never blindly repeat a relative move after failure.", {
+        "forward_m": {"type": "number", "minimum": -3, "maximum": 3},
+        "left_m": {"type": "number", "minimum": -3, "maximum": 3},
+        "yaw_delta_rad": {"type": ["number", "null"], "minimum": -3.141592653589793,
+                          "maximum": 3.141592653589793, "description": "Null keeps the starting heading."},
+        "session_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "timeout_s": {"type": ["number", "null"], "minimum": 1, "maximum": 300,
+                      "description": "Wall-clock deadline; null uses 120 seconds."},
+    }),
+    schema("navigate_to_object", "Move to a reachable, clear base pose NEAR a confirmed stored object UUID, "
+           "facing its last-known location. The supervisor selects the pose using the costmap, robot footprint, "
+           "and Nav2 route planning. Stale objects are allowed in the current map session. Arrival does not "
+           "prove the object is still present or visible. Returns the chosen pose and actual distance.", {
+        "object_id": {"type": "string", "minLength": 1, "maxLength": 128,
+                      "description": "Exact UUID from observe_scene or query_objects; never invent it."},
+        "standoff_m": {"type": ["number", "null"], "minimum": .5, "maximum": 2.,
+                       "description": "Preferred horizontal base-origin distance from stored object point; "
+                                      "null uses 0.8 m. May select up to 0.8 m farther, capped at 2 m, for clearance."},
+        "session_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "timeout_s": {"type": ["number", "null"], "minimum": 1, "maximum": 300,
+                      "description": "Wall-clock deadline including approach search; null uses 120 seconds."},
     }),
     schema("cancel_navigation", "Cancel this agent's navigation goal. Does not require a plan. "
            "Inspect stop_confirmed; sending cancellation alone does not establish a stop.", {}),
@@ -90,9 +116,13 @@ class ToolRegistry:
                 return self.robot.cancel_navigation()
             if not self.plan:
                 raise ToolError("PLAN_REQUIRED", "Call update_plan before robot tools for this instruction.")
-            if name == "navigate":
+            if name in ("navigate", "navigate_relative", "navigate_to_object"):
                 args["timeout_s"] = 120. if args["timeout_s"] is None else args["timeout_s"]
-                return self.robot.navigate(**args)
+                if name == "navigate_relative" and args["yaw_delta_rad"] is None:
+                    args["yaw_delta_rad"] = 0.
+                if name == "navigate_to_object" and args["standoff_m"] is None:
+                    args["standoff_m"] = .8
+                return getattr(self.robot, name)(**args)
             if name == "set_perception_vocabulary":
                 classes = validate_classes(args["classes"])
                 return self.robot.set_vocabulary(classes)

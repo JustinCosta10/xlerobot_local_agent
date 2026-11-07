@@ -183,3 +183,44 @@ def test_navigation_opt_in_plan_gate_and_emergency_tools():
     assert registry.dispatch("navigate", args)["code"] == "PLAN_REQUIRED"
     registry.plan = ["Navigate"]
     assert registry.dispatch("navigate", args)["arguments"]["timeout_s"] == 120.
+
+
+@pytest.mark.parametrize("name,args,expected", [
+    ("navigate_relative", dict(forward_m=.5, left_m=0, yaw_delta_rad=None,
+                               session_id="map-one", timeout_s=None), {"yaw_delta_rad": 0.}),
+    ("navigate_to_object", dict(object_id="known-uuid", standoff_m=None,
+                                session_id="map-one", timeout_s=None), {"standoff_m": .8}),
+])
+def test_new_navigation_tools_are_exposed_only_with_motion_enabled_and_use_defaults(name, args, expected):
+    class Robot(FakePerception):
+        navigation_enabled = True
+        def navigate_relative(self, **kwargs):
+            return dict(success=True, arguments=kwargs)
+        def navigate_to_object(self, **kwargs):
+            return dict(success=True, arguments=kwargs)
+    assert ToolRegistry(FakePerception()).dispatch(name, json.dumps(args))["code"] == "UNKNOWN_TOOL"
+    registry = ToolRegistry(Robot())
+    assert {"navigate", "navigate_relative", "navigate_to_object"} <= {s["name"] for s in registry.schemas}
+    assert registry.dispatch(name, json.dumps(args))["code"] == "PLAN_REQUIRED"
+    registry.plan = ["Navigate using a grounded destination"]
+    result = registry.dispatch(name, json.dumps(args))
+    assert result["success"] and result["arguments"]["timeout_s"] == 120.
+    for field, value in expected.items():
+        assert result["arguments"][field] == value
+
+
+@pytest.mark.parametrize("name,args", [
+    ("navigate_relative", dict(forward_m=True, left_m=0, yaw_delta_rad=0, session_id="map", timeout_s=None)),
+    ("navigate_relative", dict(forward_m=4, left_m=0, yaw_delta_rad=0, session_id="map", timeout_s=None)),
+    ("navigate_relative", dict(forward_m=0, left_m=0, yaw_delta_rad=4, session_id="map", timeout_s=None)),
+    ("navigate_to_object", dict(object_id="", standoff_m=None, session_id="map", timeout_s=None)),
+    ("navigate_to_object", dict(object_id="cube", standoff_m=.1, session_id="map", timeout_s=None)),
+])
+def test_new_navigation_invalid_arguments_never_reach_robot(name, args):
+    class Robot:
+        navigation_enabled = True
+        def __getattr__(self, _):
+            pytest.fail("Invalid navigation arguments dispatched")
+    registry = ToolRegistry(Robot())
+    registry.plan = ["Navigate"]
+    assert registry.dispatch(name, json.dumps(args))["code"] == "INVALID_ARGUMENT"

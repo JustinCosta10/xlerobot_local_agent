@@ -118,8 +118,50 @@ Navigation cannot be combined with `--demo`, `--fake-perception`, or `--wall-tim
 | Additional tool | Behavior |
 | --- | --- |
 | `get_navigation_state` | Current map pose, session ID, readiness/reason, active operation, last result, speed and duration limits. Available without a plan. |
-| `navigate` | Explicit base `x`, `y`, `yaw` in `map`, exact current `session_id`, and nullable `timeout_s` (default 120; range 1–300 wall seconds). Waits for completion and reports progress. Requires a plan. |
+| `navigate` | Navigate to a point/base pose: `x`, `y`, `yaw` in `map`, exact current `session_id`, and nullable `timeout_s` (default 120; range 1–300 wall seconds). |
+| `navigate_relative` | Resolve `forward_m`, `left_m`, and nullable `yaw_delta_rad` once from the measured starting pose. Positive means forward, left, and counterclockwise. Null yaw change means zero. Translation components are bounded to ±3 m and yaw change to ±π. |
+| `navigate_to_object` | Resolve an exact confirmed `object_id` in the current `session_id` to a checked, reachable base pose near the stored location, facing it. Nullable `standoff_m` defaults to 0.8 m; allowed range 0.5–2 m. |
 | `cancel_navigation` | Cancels only this client's goal. Available without a plan; inspect `stop_confirmed`. During the serial tool wait use Ctrl+C. |
+
+All three movement tools require a plan, wait for completion, report progress,
+and return the resolved destination, final measured pose, and stop confirmation.
+Relative and object tools also require `session_id` and nullable `timeout_s` with
+the same defaults/limits. Relative movement specifies a destination, so the
+differential-drive robot may turn or follow a curved route; it cannot strafe.
+Tool results include the starting pose used for a relative move. Never blindly
+repeat a relative call after a failure because it would define another offset.
+Nav2's 0.12 m XY and 0.15 rad yaw tolerances still apply. Small offsets can already
+be satisfied without movement; use the measured final pose when reporting travel.
+
+Examples: `Move forward 0.3 meters, keeping your heading.` / `Move to a safe point
+near the nearest known cube and face it.` The model queries stored objects and
+uses their actual UUIDs; ambiguous targets need disambiguation.
+
+Object approach selection runs in the supervisor while velocity permission is off.
+It reads the confirmed object record (including stale records), the live global
+costmap, the configured footprint/padding, and the controller's XY goal tolerance.
+A circle enclosing the padded footprint at every heading, plus goal tolerance
+and 5 cm of clearance, must fit entirely within known, unoccupied map cells.
+The check covers cell interiors and edges, including the cart's rear overhang.
+This conservative envelope also leaves room for the final turn toward the object.
+The footprint still excludes articulated arms.
+
+The preferred standoff is the horizontal distance from `base_link` to the stored
+object surface point, not a distance from the object's full physical boundary.
+The search samples 24 headings at the preferred radius and up to four farther
+radii in 0.2 m increments, capped at 2 m. It checks at most 24 clear candidates
+with Nav2's [ComputePathToPose action](https://api.nav2.org/actions/jazzy/computepathtopose.html),
+within a 15-second planning budget and the overall
+tool deadline. It re-reads the object and costmap and rechecks clearance before
+dispatch. No valid sampled approach produces `NO_SAFE_APPROACH`; a partial search
+that runs out of time produces `APPROACH_TIMEOUT`. Neither sends a motion goal.
+Map changes, significant target movement during planning, stale costmaps, and
+cancellation also stop resolution. Safety remains relative to the configured
+footprint and available map; Nav2 handles obstacle avoidance during execution.
+
+Results expose the selected standoff and measured final distance from the object's
+last-known location. Reaching that pose does not prove the object remains there or
+is visible. Small tracking updates are tolerated; this is not moving-object pursuit.
 
 The independent ROS supervisor allows one goal, requires fresh mapping, visual
 tracking, localization, odometry, an active Nav2 navigator, and the current object-map session, and rejects
@@ -146,12 +188,9 @@ configured tolerance, not object presence, visibility, or manipulation readiness
 The supervisor bounds map coordinates to the configured 16 m map and caps duration;
 the model cannot supply velocity commands, alternate frames, or behavior-tree paths.
 
-All four destination interfaces are intended to share this executor: map pose
-(implemented), relative movement (resolve once from a measured starting pose),
-object approach (select a reachable floor pose with clearance and final heading),
-and named waypoints (resolve a stored pose in the correct map session). The latter
-three are not registered yet. Object surface coordinates must not be used directly
-as base goals; perception age does not by itself invalidate a last-known destination.
+Point, relative, and object destinations share the same supervised executor.
+Named waypoints remain deferred. Object surface coordinates must not be used
+directly as base goals; perception age does not by itself invalidate a last-known destination.
 
 ## Configuration
 
@@ -238,11 +277,18 @@ source scripts/env.sh
 python3 scripts/test_agent_navigation.py
 ```
 
-Validated on 2026-11-06: the supervised base drove 0.383 m toward a 0.5 m map goal,
-finished within the configured 0.12 m XY tolerance, rejected a destination inside
-the table, and canceled another goal with measured stopping. The synthetic ROS
-and agent suites passed 65 tests. This does not establish model-selected navigation
-quality; that requires a separate live-model trial.
+This test now also checks relative navigation and an approach to an actual
+confirmed detector record in the simulated scene. Rebuild the navigation action
+interface and restart both the navigation stack and agent after updating; an
+already-running process still has the previous action definition loaded.
+
+Validated on 2026-11-06: the extended synthetic ROS, geometry, launch, and agent
+suites passed 91 tests. Isaac drove 0.407 m toward a 0.5 m map goal, rejected a
+destination inside the table, confirmed cancellation, and reached a relative
+destination 0.3 m ahead of its measured starting pose. It then selected a clear
+approach 0.8 m from a confirmed cube record and finished 0.943 m from that stored
+position, facing it. This does not establish model-selected navigation quality;
+that requires a separate live-model trial.
 
 References: [OpenAI function calling](https://developers.openai.com/api/docs/guides/function-calling),
 [subscription API credits](https://developers.openai.com/api/docs/guides/chatgpt-api-credits),

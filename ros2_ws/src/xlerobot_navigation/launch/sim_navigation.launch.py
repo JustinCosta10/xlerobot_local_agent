@@ -21,6 +21,8 @@ def check_agent_interfaces():
         from rclpy.type_support import check_for_type_support
         from xlerobot_navigation_interfaces.action import Navigate
         check_for_type_support(Navigate)
+        if not {"target_type", "object_id", "forward_m"} <= set(Navigate.Goal.get_fields_and_field_types()):
+            raise ImportError("Navigation interfaces need rebuilding for point/relative/object destinations")
     except (ImportError, RuntimeError) as error:
         raise RuntimeError("Agent navigation interfaces are not available in this terminal. "
                            "From ros2_ws, run: source scripts/env.sh. If the package has not been built, "

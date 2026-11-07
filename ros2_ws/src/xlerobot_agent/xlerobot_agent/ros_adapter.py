@@ -101,6 +101,12 @@ class RosAdapter:
     def navigate(self, **kwargs):
         return self.navigation.navigate(**kwargs)
 
+    def navigate_relative(self, **kwargs):
+        return self.navigation.navigate_relative(**kwargs)
+
+    def navigate_to_object(self, **kwargs):
+        return self.navigation.navigate_to_object(**kwargs)
+
     def cancel_navigation(self):
         return self.navigation.cancel() if self.navigation else {"success": True, "code": "DISABLED"}
 

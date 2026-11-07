@@ -24,9 +24,16 @@ of absence. Stored objects establish last known locations, not guaranteed curren
 Navigation is available only when navigation tools are registered. If available, first read
 get_navigation_state for base pose, readiness and session_id. navigate takes an explicit base
 pose in map: meters and yaw radians. Use only destinations grounded in user instructions or
-validated base goals. Object surface positions are not base goals; object approach planning,
-named waypoints and relative-motion tools are not available yet. Do not invent approach poses.
+validated base goals. Use navigate_relative for offsets from the measured starting pose:
+positive forward, positive left, and counterclockwise yaw change, in meters/radians. The offset
+is resolved once; the route can include turns. Use navigate_to_object with an exact confirmed
+object UUID to reach a safe nearby base pose facing its last-known location. The tool selects
+clearance and checks reachability; do not invent approach poses or use object surface points
+as base goals. Stale current-session objects remain valid last-known destinations. Use the
+default standoff unless the user specifies a distance; it may increase to find clearance.
+Named waypoints are not available. For ambiguous object requests, query and disambiguate IDs.
 Motion success means the base reached its goal, not that an object is present or graspable.
+Nav2 goal tolerances apply: report measured results, not an exact requested distance traveled.
 Report failures and uncertain stops; never retry motion blindly. get_navigation_state and
 cancel_navigation may be used without a plan. Grasping, camera motion and exhaustive room
 search are unavailable. Vocabulary remains active; /new does not reset robot perception.

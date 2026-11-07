@@ -24,6 +24,8 @@ from xlerobot_navigation_interfaces.action import Navigate
 from xlerobot_perception_interfaces.msg import TrackedObjectArray
 
 from .guard import MappingStatus, fresh
+from .approach import ObjectApproach, pose_message
+from .destinations import DestinationError, relative_destination
 
 
 def pose_data(message):
@@ -33,6 +35,17 @@ def pose_data(message):
 
 
 def valid_goal(request):
+    if not math.isfinite(request.timeout_s) or not 1 <= request.timeout_s <= 300:
+        return False
+    if request.target_type == Navigate.Goal.RELATIVE:
+        values = (request.forward_m, request.left_m, request.yaw_delta_rad)
+        return (all(math.isfinite(v) for v in values) and abs(request.forward_m) <= 3
+                and abs(request.left_m) <= 3 and abs(request.yaw_delta_rad) <= math.pi)
+    if request.target_type == Navigate.Goal.OBJECT:
+        return (0 < len(request.object_id) <= 128 and math.isfinite(request.standoff_m)
+                and .5 <= request.standoff_m <= 2.)
+    if request.target_type != Navigate.Goal.POINT:
+        return False
     p, q = request.pose.pose.position, request.pose.pose.orientation
     values = (p.x, p.y, p.z, q.x, q.y, q.z, q.w, request.timeout_s)
     return (all(math.isfinite(v) for v in values) and request.pose.header.frame_id == "map"
@@ -68,6 +81,7 @@ class NavigationSupervisor(MappingStatus):
         self.permit = self.create_publisher(Bool, "agent_navigation/permit", 1)
         self.state_pub = self.create_publisher(String, "agent_navigation/state", 1)
         self.nav = ActionClient(self, NavigateToPose, "navigate_to_pose_internal")
+        self.approach = ObjectApproach(self)
         self.server = ActionServer(self, Navigate, "agent_navigation/navigate", self.execute,
                                    goal_callback=self.accept, cancel_callback=self.cancel,
                                    handle_accepted_callback=self.accepted)
@@ -136,7 +150,8 @@ class NavigationSupervisor(MappingStatus):
         self.operation = dict(id=bytes(handle.goal_id.uuid).hex(), handle=handle,
                               finished=Future(executor=self.executor), started=now,
                               heartbeat=None, phase="starting", sent=None, backend=None,
-                              result=None, cancel=None, sent_checked=False, stationary_since=None)
+                              result=None, cancel=None, sent_checked=False, stationary_since=None,
+                              resolved_pose=None, target_details={})
         self.results[self.operation["id"]] = self.operation["finished"]
         self.reserved = False
         handle.execute()
@@ -166,6 +181,7 @@ class NavigationSupervisor(MappingStatus):
         op.update(phase="stopping", code=code, message=message,
                   stop_deadline=time.monotonic() + 5., stationary_since=None)
         self.permit.publish(Bool(data=False))
+        self.approach.cancel(op)
 
     def feedback(self, op, message):
         if self.operation is op and op["phase"] == "running":
@@ -185,10 +201,53 @@ class NavigationSupervisor(MappingStatus):
             result.message += " " + self.fault
         if result.final_pose_valid:
             result.final_pose = self.pose
+        if op["resolved_pose"] is not None:
+            result.resolved_pose_valid = True
+            result.resolved_pose = op["resolved_pose"]
+        details = dict(op["target_details"])
+        if details.get("kind") == "object" and result.final_pose_valid:
+            target = details["object_position_m"]
+            details["final_standoff_m"] = math.hypot(self.pose.pose.position.x-target[0],
+                                                     self.pose.pose.position.y-target[1])
+            details["observation_age_s_at_finish"] = (self.get_clock().now().nanoseconds*1e-9
+                                                     - details["observation_stamp_s"])
+        result.target_details_json = json.dumps(details, allow_nan=False)
         self.last_result = dict(operation_id=op["id"], code=code,
                                 cause=op["code"], stop_confirmed=stopped)
         op["finished"].set_result(result)
         self.operation = None
+
+    def send_navigation(self, op, pose):
+        if not (-8 < pose.pose.position.x < 8 and -8 < pose.pose.position.y < 8):
+            raise DestinationError("OUTSIDE_MAP", "Resolved destination is outside the configured navigation map.")
+        op["resolved_pose"] = pose
+        pose.header.stamp = self.get_clock().now().to_msg()
+        op["sent"] = self.nav.send_goal_async(NavigateToPose.Goal(pose=pose),
+            feedback_callback=lambda message: self.feedback(op, message))
+        op["sent"].add_done_callback(lambda future: self.backend_accepted(op, future))
+        op["nav_sent_at"] = time.monotonic()
+        op["phase"] = "accepting"
+
+    def resolve_destination(self, op):
+        request = op["handle"].request
+        if op["phase"] == "starting" and op["heartbeat"] is not None:
+            start = pose_data(self.pose)
+            if request.target_type == Navigate.Goal.OBJECT:
+                self.approach.begin(op, start)
+            elif request.target_type == Navigate.Goal.RELATIVE:
+                goal = relative_destination(start, request.forward_m, request.left_m, request.yaw_delta_rad)
+                op["target_details"] = dict(kind="relative", starting_pose=start,
+                    forward_m=request.forward_m, left_m=request.left_m, yaw_delta_rad=request.yaw_delta_rad)
+                self.send_navigation(op, pose_message(self, goal))
+            else:
+                op["target_details"] = dict(kind="point")
+                self.send_navigation(op, request.pose)
+        elif op["phase"] in ("querying_object", "finding_approach", "planning_approach", "checking_approach"):
+            if op.get("planning_rejected"):
+                raise DestinationError("PLANNER_REJECTED", "Nav2 rejected the path-planning request; no movement dispatched.")
+            resolved = self.approach.advance(op)
+            if resolved is not None:
+                self.send_navigation(op, resolved)
 
     def tick(self):
         now = time.monotonic()
@@ -217,15 +276,11 @@ class NavigationSupervisor(MappingStatus):
                 self.stop("TIMED_OUT", "Navigation wall-clock deadline exceeded.")
             elif now - (op["heartbeat"] or op["started"]) > 1.:
                 self.stop("CLIENT_LOST", "Agent heartbeat expired.")
-            if op["phase"] == "starting" and op["heartbeat"] is not None:
-                goal = NavigateToPose.Goal(pose=request.pose)
-                goal.pose.header.stamp = self.get_clock().now().to_msg()
-                op["sent"] = self.nav.send_goal_async(goal,
-                    feedback_callback=lambda message, operation=op: self.feedback(operation, message))
-                # Even a response arriving after our stop deadline must be canceled.
-                op["sent"].add_done_callback(lambda future, operation=op: self.backend_accepted(operation, future))
-                op["phase"] = "accepting"
-            if op["phase"] == "accepting" and now - op["started"] > 5.:
+            try:
+                self.resolve_destination(op)
+            except DestinationError as error:
+                self.stop(error.code, str(error))
+            if op["phase"] == "accepting" and now - op["nav_sent_at"] > 5.:
                 self.stop("ACCEPTANCE_TIMEOUT", "Nav2 did not acknowledge the goal in time.")
             if op["result"] is not None and op["result"].done() and op["phase"] != "stopping":
                 response = op["result"].result()

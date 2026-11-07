@@ -2,12 +2,26 @@
 geometry_msgs/PoseStamped pose
 string session_id
 float64 timeout_s
+# POINT uses pose; RELATIVE resolves once from the measured base pose; OBJECT
+# resolves a confirmed current-session UUID to a reachable, clear approach pose.
+uint8 POINT=0
+uint8 RELATIVE=1
+uint8 OBJECT=2
+uint8 target_type
+float64 forward_m
+float64 left_m
+float64 yaw_delta_rad
+string object_id
+float64 standoff_m
 ---
 string code
 string message
 bool stop_confirmed
 bool final_pose_valid
 geometry_msgs/PoseStamped final_pose
+bool resolved_pose_valid
+geometry_msgs/PoseStamped resolved_pose
+string target_details_json
 ---
 geometry_msgs/PoseStamped current_pose
 float32 distance_remaining

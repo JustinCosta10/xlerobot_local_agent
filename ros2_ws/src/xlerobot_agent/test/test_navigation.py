@@ -1,6 +1,7 @@
 """Real DDS supervisor/guard/action tests; synthetic sensors and base, no motors/API."""
 
 import json
+import math
 import os
 import signal
 import subprocess
@@ -14,7 +15,10 @@ import rclpy
 from geometry_msgs.msg import PoseStamped, TwistStamped
 from isaac_ros_visual_slam_interfaces.msg import VisualSlamStatus
 from lifecycle_msgs.srv import GetState
-from nav2_msgs.action import NavigateToPose
+from nav2_msgs.action import ComputePathToPose, NavigateToPose
+from nav2_msgs.srv import GetCostmap
+from rcl_interfaces.msg import ParameterType, ParameterValue
+from rcl_interfaces.srv import GetParameters
 from nav_msgs.msg import Odometry
 from nvblox_msgs.msg import DistanceMapSlice
 from rclpy.action import ActionClient, ActionServer, CancelResponse, GoalResponse
@@ -32,7 +36,8 @@ from unique_identifier_msgs.msg import UUID
 from xlerobot_navigation.guard import NavigationGuard
 from xlerobot_navigation.supervisor import NavigationSupervisor
 from xlerobot_navigation_interfaces.action import Navigate
-from xlerobot_perception_interfaces.msg import TrackedObjectArray
+from xlerobot_perception_interfaces.msg import TrackedObject, TrackedObjectArray
+from xlerobot_perception_interfaces.srv import QueryObjects
 
 from xlerobot_agent.navigation import NavigationClient
 from xlerobot_agent.tools import ToolRegistry
@@ -61,12 +66,28 @@ class NavigationPeer(Node):
         self.commands = []
         self.velocity = 0.
         self.x = 0.
+        self.yaw = 0.
         self.terminate_after = .5
         self.reject = False
         self.abort = False
         self.ignore_cancel = False
         self.accept_delay = 0.
         self.lifecycle_active = True
+        self.object_exists = True
+        self.object_x = 1.5
+        self.object_session = None
+        self.costmap_unknown = False
+        self.costmap_stale = False
+        self.path_blocked = False
+        self.path_delay = 0.
+        self.paths = []
+        self.change_map_after_plan = False
+        self.create_service(QueryObjects, "object_map/query", self.query_object)
+        self.create_service(GetCostmap, "global_costmap/get_costmap", self.get_costmap)
+        self.create_service(GetParameters, "global_costmap/global_costmap/get_parameters", self.parameters)
+        self.create_service(GetParameters, "controller_server/get_parameters", self.parameters)
+        self.path_server = ActionServer(self, ComputePathToPose, "compute_path_to_pose", self.compute_path,
+            cancel_callback=lambda _: CancelResponse.ACCEPT, callback_group=ReentrantCallbackGroup())
         self.create_service(GetState, "bt_navigator/get_state", self.lifecycle)
         self.clock_pub = self.create_publisher(Clock, "/clock", 10)
         self.pose_pub = self.create_publisher(PoseStamped, "localization/pose", 10)
@@ -92,6 +113,63 @@ class NavigationPeer(Node):
     def lifecycle(self, request, response):
         response.current_state.id = 3 if self.lifecycle_active else 2
         return response
+
+    def parameters(self, request, response):
+        for name in request.names:
+            if name == "footprint":
+                response.values.append(ParameterValue(type=ParameterType.PARAMETER_STRING,
+                    string_value='[[-0.356,-0.252],[0.064,-0.252],[0.064,0.252],[-0.356,0.252]]'))
+            else:
+                response.values.append(ParameterValue(type=ParameterType.PARAMETER_DOUBLE,
+                    double_value=.02 if name == "footprint_padding" else .12))
+        return response
+
+    def query_object(self, request, response):
+        response.success = True
+        response.current_session_id = self.session
+        if self.object_exists and request.object_id == "stored-cube":
+            obj = TrackedObject(object_id="stored-cube", session_id=self.object_session or self.session,
+                                label="cube", observation_count=5, stale=True)
+            obj.header.frame_id = "map"
+            obj.header.stamp.sec = 1  # Old observations remain valid last-known destinations.
+            obj.position.x, obj.position.z = self.object_x, .8
+            response.objects = [obj]
+        return response
+
+    def get_costmap(self, request, response):
+        mapping = response.map
+        mapping.header.frame_id = "map"
+        mapping.metadata.resolution = .05
+        mapping.metadata.size_x = mapping.metadata.size_y = 160
+        mapping.metadata.origin.position.x = mapping.metadata.origin.position.y = -4.
+        mapping.metadata.origin.orientation.w = 1.
+        mapping.metadata.update_time.sec = int(self.clock) - (10 if self.costmap_stale else 0)
+        mapping.metadata.update_time.nanosec = int((self.clock % 1)*1e9)
+        data = [255 if self.costmap_unknown else 0] * (160*160)
+        if not self.costmap_unknown:
+            for y in range(72, 88):
+                for x in range(102, 120):
+                    data[y*160+x] = 254
+        mapping.data = data
+        return response
+
+    async def compute_path(self, handle):
+        self.paths.append(handle.request)
+        if self.path_delay:
+            time.sleep(self.path_delay)
+        result = ComputePathToPose.Result()
+        if handle.is_cancel_requested:
+            handle.canceled()
+        elif self.path_blocked:
+            handle.abort()
+            result.error_code = 1
+        else:
+            handle.succeed()
+            result.path.header.frame_id = "map"
+            result.path.poses = [handle.request.goal]
+            if self.change_map_after_plan:
+                self.costmap_unknown = True
+        return result
 
     async def execute(self, handle):
         done = Future(executor=self.executor)
@@ -120,7 +198,7 @@ class NavigationPeer(Node):
         pose.header.frame_id, pose.header.stamp = "map", stamp
         self.x += self.velocity * .02
         pose.pose.position.x = self.x
-        pose.pose.orientation.w = 1.
+        pose.pose.orientation.z, pose.pose.orientation.w = math.sin(self.yaw/2), math.cos(self.yaw/2)
         self.pose_pub.publish(pose)
         odom = Odometry()
         odom.header.stamp = stamp
@@ -190,6 +268,8 @@ def navigation():
         supervisor.server.destroy()
         supervisor.nav.destroy()
         peer.server.destroy()
+        peer.path_server.destroy()
+        supervisor.approach.planner.destroy()
         for item in (node, supervisor, guard, peer):
             item.destroy_node()
         context.try_shutdown()
@@ -391,3 +471,71 @@ def test_inactive_lifecycle_blocks_navigation_even_when_action_exists(navigation
     wait_for(lambda: not client.status()["ready"])
     assert "not active" in client.status()["reason"]
     assert not peer.received
+
+
+def run_object(client, object_id="stored-cube", timeout_s=20.):
+    return client.navigate_to_object(object_id=object_id, standoff_m=.8,
+                                    session_id=client.status()["session_id"], timeout_s=timeout_s)
+
+
+def test_relative_destination_resolved_once_on_supervisor(navigation):
+    client, peer, _, _ = navigation
+    peer.yaw = math.pi/2
+    wait_for(lambda: abs(client.status()["pose"]["yaw"]-math.pi/2) < .01)
+    result = client.navigate_relative(forward_m=.5, left_m=.2, yaw_delta_rad=-math.pi/2,
+                                     session_id=peer.session, timeout_s=20.)
+    assert result["success"]
+    assert result["resolved_pose"]["x"] == pytest.approx(-.2)
+    assert result["resolved_pose"]["y"] == pytest.approx(.5)
+    assert result["resolved_pose"]["yaw"] == pytest.approx(0.)
+    assert len(peer.received) == 1
+
+
+def test_object_approach_selects_clear_floor_pose_not_object_position(navigation):
+    client, peer, _, _ = navigation
+    result = run_object(client)
+    assert result["success"] and result["stop_confirmed"]
+    assert result["target"]["stale"] and result["target"]["object_id"] == "stored-cube"
+    assert result["target"]["selected_standoff_m"] >= 1.2-1e-6
+    assert result["target"]["clearance_envelope_radius_m"] > .63
+    assert peer.paths and len(peer.received) == 1
+    goal = peer.received[0].pose.pose
+    assert goal.position.z == 0 and goal.position.x != peer.object_x
+    assert result["resolved_pose"]["yaw"] == pytest.approx(math.atan2(-goal.position.y, peer.object_x-goal.position.x))
+
+
+@pytest.mark.parametrize("failure,expected", [("missing", "OBJECT_NOT_FOUND"),
+    ("session", "OBJECT_NOT_FOUND"), ("unknown", "NO_SAFE_APPROACH"),
+    ("stale_map", "STALE_COSTMAP"), ("blocked", "NO_SAFE_APPROACH"),
+    ("changed", "APPROACH_CHANGED")])
+def test_object_resolution_failures_never_dispatch_motion(navigation, failure, expected):
+    client, peer, _, _ = navigation
+    if failure == "missing":
+        peer.object_exists = False
+    elif failure == "session":
+        peer.object_session = "previous-map"
+    elif failure == "unknown":
+        peer.costmap_unknown = True
+    elif failure == "stale_map":
+        peer.costmap_stale = True
+    elif failure == "blocked":
+        peer.path_blocked = True
+    elif failure == "changed":
+        peer.change_map_after_plan = True
+    result = run_object(client)
+    assert result["code"] == expected and not result["success"]
+    assert not peer.received and not any(v > 0 for v in peer.commands)
+
+
+def test_cancel_during_object_planning_never_dispatches_late_motion(navigation):
+    client, peer, _, _ = navigation
+    peer.path_delay = .7
+    results = []
+    worker = Thread(target=lambda: results.append(run_object(client)))
+    worker.start()
+    wait_for(lambda: peer.paths)
+    stopped = client.cancel()
+    worker.join(timeout=8.)
+    assert stopped["stop_confirmed"] and results[0]["code"] == "CANCELED"
+    time.sleep(.8)
+    assert not peer.received and not any(v > 0 for v in peer.commands)
