@@ -1,5 +1,21 @@
 # XLeRobot research
 
+| Simulation scene | Approach to a detected object |
+| --- | --- |
+| [![XLeRobot in the simulated room with a table of household objects and blue cubes](docs/images/simulation-scene.webp)](docs/images/simulation-scene.webp) | [![XLeRobot beside the table after navigating to an approach pose near a detected cracker box](docs/images/object-approach.webp)](docs/images/object-approach.webp) |
+
+Captured from the running Isaac Sim scene, before and after a successful
+supervised Nav2 approach to a detected cracker box. Click either image for the
+full-resolution view, or see the [robot close-up](docs/images/robot-detail.webp).
+
+| nvblox reconstruction and Nav2 in RViz | Robot's camera view |
+| --- | --- |
+| [![RViz navigation scene showing the colored nvblox reconstruction, obstacle-clearance costmap, and robot model](docs/images/rviz-navigation.webp)](docs/images/rviz-navigation.webp) | [![Live RGB image from the robot's head camera looking down toward the tabletop objects](docs/images/robot-perspective.webp)](docs/images/robot-perspective.webp) |
+
+The reconstructed scene comes from simulated depth and RGB observations. The
+camera view shows the table after the approach, with the head tilted downward.
+See the [full RViz window](docs/images/rviz-window.webp) for both views together.
+
 An undergraduate senior thesis exploring **which robot tools and feedback formats
 best support a small local language model in carrying out natural-language
 mobile-manipulation tasks**. The research platform is a two-wheel XLeRobot in
