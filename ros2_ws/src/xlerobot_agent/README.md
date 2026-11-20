@@ -5,9 +5,15 @@ and reads **confirmed stored objects and their last known locations**. It attach
 existing robot stack. Perception is enabled by default; supervised pose navigation
 can be enabled explicitly for simulation.
 
-This prototype supports the repository's research on local language-model
-planning for mobile manipulation. See the [project roadmap](../../../README.md#planned-features-and-research-work);
-local-model integration and manipulation remain planned work.
+This prototype supports the repository's research on a physical XLeRobot with
+YOLOE perception and local LLM inference running together on Jetson AGX Orin.
+The agent's ROS tool execution, object memory, navigation, and control will also
+run onboard. Isaac Sim is the current development environment and will not be
+part of physical operation. Optional offloading will move only LLM inference to
+another computer or hosted provider. See the
+[project roadmap](../../../README.md#planned-features-and-research-work);
+Jetson deployment, local-model integration, physical interfaces, and manipulation
+remain planned work. Commands below use the current development prototype.
 
 ## Build and try the offline demo
 
@@ -210,9 +216,12 @@ The endpoint is a full HTTPS Responses URL. Requests use `store: false`, carry
 required opaque continuation items in memory, and do not log private reasoning.
 
 There is one provider interface in `providers/base.py`, one production adapter
-in `providers/openai.py`, and a shared serial tool loop. Ollama is deferred; adding
-its adapter will not require changing the ROS tools. Unsupported provider names
-fail explicitly. There is no automatic fallback or retry.
+in `providers/openai.py`, and a shared serial tool loop. A local provider/runtime
+for Orin is planned but not implemented. It will use the same ROS tools while
+sharing the Orin's compute and memory with perception. Optional offloaded LLM
+inference will leave tool execution and perception onboard; the existing hosted
+adapter can provide a reference for that configuration. Unsupported provider
+names fail explicitly. There is no automatic fallback or retry.
 
 ## Tool behavior and limits
 

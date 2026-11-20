@@ -31,8 +31,9 @@ Click any image for its full-resolution view, or see the
 
 An undergraduate senior thesis exploring **which robot tools and feedback formats
 best support a small local language model in carrying out natural-language
-mobile-manipulation tasks**. The research platform is a two-wheel XLeRobot in
-Isaac Sim, with ROS 2 control, perception, object memory, and navigation.
+mobile-manipulation tasks**. The target is a physical two-wheel XLeRobot with
+perception and language-model inference running together onboard Jetson AGX
+Orin. Isaac Sim provides the current development and testing environment.
 
 The intended demonstration is a task such as “find the cube and place it in the
 marked area.” The model will choose detection vocabulary and sequence robot
@@ -40,26 +41,41 @@ tools. The research compares separate action tools with combined operations,
 such as navigation plus grasping, while measuring reliability, latency, and
 memory use.
 
-**Status as of 2026-11-19:** the prototype uses a hosted OpenAI model and supports
-perception and supervised base navigation. Local inference on Jetson AGX Orin
-and tabletop manipulation are planned; the complete pick-and-place demonstration
-is not yet implemented.
+**Status as of 2026-11-19:** the workstation prototype uses a hosted OpenAI model
+and supports perception and supervised base navigation in simulation. Deploying
+perception and a local LLM together on Orin, integrating the physical camera and
+motors, and implementing tabletop manipulation remain planned work.
 
 ## Prerequisites
+
+These requirements are for the current simulation prototype. The Jetson
+deployment environment still needs to be integrated and validated.
 
 - **Workstation:** Ubuntu 24.04, ROS 2 Jazzy, Python 3.12, and `colcon`. The
   environment script expects ROS at `/opt/ros/jazzy`.
 - **Simulation:** Isaac Sim 6.2 and a compatible NVIDIA GPU/driver. Isaac defaults
-  to `$HOME/isaacsim`; set `ISAAC_SIM_PATH` for another installation. The mock
-  interface and scripted agent demo do not require Isaac or a GPU.
+  to `$HOME/isaacsim`; set `ISAAC_SIM_PATH` for another installation. Isaac is
+  used for development and testing; physical operation will not require it.
 - **ROS and perception dependencies:** follow the
   [workspace dependency setup](ros2_ws/README.md#dependencies). For navigation,
   also install the [Nav2, cuVSLAM, nvblox, YOLOE, and tabletop assets](ros2_ws/README.md#clicked-goal-navigation-with-live-nvblox-mapping)
   before building and launching the full scene.
-- **Live language-model calls:** an `OPENAI_API_KEY` in your environment and an
+- **Current hosted agent:** an `OPENAI_API_KEY` in your environment and an
   available model configured in the [agent](ros2_ws/src/xlerobot_agent/README.md#configuration).
-  The scripted `--demo` needs no credentials. Jetson hardware is part of the
-  planned local-model work, not a prerequisite for the current prototype.
+  The target deployment will use local inference on Orin.
+
+## Target deployment
+
+| Location | Planned role |
+| --- | --- |
+| Onboard Jetson AGX Orin | YOLOE perception and local LLM inference running together, plus the agent, object memory, localization, mapping, navigation, and ROS control connected to the real camera and motor interfaces. |
+| Optional remote computer or hosted provider | LLM inference only. Perception, ROS tool execution, and robot control remain onboard. |
+| Development workstation | Isaac Sim for scene development, integration, and regression testing before physical trials. It is outside the physical robot's runtime. |
+
+The physical robot will operate from real sensor feedback without an Isaac Sim
+connection, simulated state, or simulator clock. LLM offloading is an optional
+configuration for comparison or additional inference capacity; the primary goal
+is onboard perception and local inference within the Orin's shared resource budget.
 
 ## What is built
 
@@ -87,37 +103,44 @@ excludes articulated arms, and mapping assumes a static scene.
 
 ## Planned features and research work
 
-1. **Local-model integration on Jetson AGX Orin.** Add a compact model with
-   structured tool use behind the existing provider interface. Isaac Sim will
-   run on a separate workstation; perception and motion components may remain
-   there too. The current OpenAI adapter can provide a hosted reference for
-   selected tasks. A local provider/runtime has not yet been integrated.
-2. **Tabletop pick-and-place.** Build grasping, arm/gripper motion, and placement
+1. **Onboard perception and local inference on Jetson AGX Orin.** Deploy YOLOE
+   and a compact model with structured tool use on the same Orin. Integrate a
+   local provider/runtime and validate the Jetson dependencies, combined memory
+   use, perception update rate, and inference latency. Optional LLM offloading
+   can provide a comparison while perception and robot execution stay onboard.
+2. **Physical robot integration.** Connect the real camera and motor interfaces
+   to the onboard ROS 2 stack. Run localization, mapping, navigation, and control
+   from real sensor feedback and timestamps, without Isaac Sim in operation.
+   Physical camera and motor backends are not yet implemented.
+3. **Tabletop pick-and-place.** Build grasping, arm/gripper motion, and placement
    tools for a small set of graspable objects, and connect them to base approach
    positioning. Arm and gripper trajectory interfaces already exist; autonomous
    manipulation does not.
-3. **Tool and feedback comparisons.** Compare individual action tools with
+4. **Tool and feedback comparisons.** Compare individual action tools with
    combined operations using the same underlying robot capabilities and model
    configuration. Refine descriptions and feedback around object IDs,
    observation freshness, action outcomes, and failure reasons.
-4. **Evaluation and thesis results.** Test explicit object names, indirect
+5. **Evaluation and thesis results.** Test explicit object names, indirect
    descriptions, multistep instructions, and follow-up requests under comparable
    starting conditions. Measure vocabulary/argument correctness, action order,
    navigation/grasp/placement success, planning latency, total task time,
-   model-call count, and peak Jetson memory. Separate model/interface errors from
-   perception/motion failures, use fresh observations and simulator recordings
-   for scoring, and check a few new instructions or scene variations. Hidden
-   scene information will not be supplied to the model.
+   model-call count, perception update rate, and peak Jetson memory while
+   perception and the LLM run concurrently. Use simulation for development and
+   report physical trials separately, scoring them with fresh sensor observations,
+   execution logs, and robot recordings. Separate model/interface errors from
+   perception/motion failures and report any offloaded-LLM comparisons separately,
+   including network latency. Hidden scene information will not be supplied to
+   the model.
 
 The work prioritizes a few complete, documented tasks over a broad task catalog.
-Physical motor and camera integration remains deferred; no physical robot
-backend is included. The mock backend supports interface tests without a GPU
-or motors, but does not replace the Isaac perception/navigation scene.
+Physical integration is required for the intended demonstration. The current
+Isaac and mock backends support development; they do not yet provide a physical
+robot runtime.
 
 ## Getting started
 
-After installing the prerequisites, build and launch the simulation from the
-repository root:
+The current runnable setup is the simulation prototype. After installing the
+prerequisites, build and launch it from the repository root:
 
 ```bash
 cd ros2_ws

@@ -1,5 +1,10 @@
 # XLeRobot DD Isaac USD asset
 
+These assets support development and testing in Isaac Sim. The target physical
+XLeRobot will run perception, local LLM inference, and its ROS stack onboard
+Jetson AGX Orin, without Isaac Sim in its runtime. See the
+[target deployment](../README.md#target-deployment).
+
 `xlerobot_dd.usd` is the ROS launch default and the selected detailed two-wheel
 robot. It contains the 127 mm tires, six-spoke cores, printed hubs, rear-only
 casters, saved wheel drive/contact settings, and RealSense mounting setup.

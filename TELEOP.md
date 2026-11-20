@@ -1,5 +1,9 @@
 # Keyboard control
 
+These commands cover the current Isaac and mock development backends. The
+planned physical robot will use onboard control on Jetson AGX Orin without
+Isaac Sim; its motor backend is not yet implemented.
+
 Install the ROS 2 Jazzy `teleop_twist_keyboard` package before using this guide.
 
 With the robot running, open a **second terminal** and paste:

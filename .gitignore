@@ -1,5 +1,6 @@
 # Private research notes stay on this machine.
 /RESEARCH_PROPOSAL.md
+/.RESEARCH_PROPOSAL.md.sw?
 
 # Local credentials and assistant configuration.
 .env

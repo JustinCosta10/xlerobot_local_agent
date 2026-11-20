@@ -1,15 +1,25 @@
 # XLeRobot DD ROS 2 workspace
 
-One ROS interface for the two-wheel XLeRobot, with Isaac Sim and a mock backend
-for interface tests. The same ros2_control controllers publish joint
-states and odometry and serve trajectory actions in both modes. The same
+The current development workspace provides one ROS interface for the two-wheel
+XLeRobot, with Isaac Sim and a mock backend for interface tests. The same
+ros2_control controllers publish joint states and odometry and serve trajectory
+actions in both modes. The same
 robot_state_publisher owns the robot TF tree.
 
-Physical motor transport is deferred until real-robot integration. No serial
-driver or physical backend is included in this workspace.
+The deployment target is a physical XLeRobot with YOLOE perception and local LLM
+inference running together on Jetson AGX Orin. The onboard ROS stack will also
+handle object memory, localization, mapping, navigation, and physical control.
+Isaac Sim is for development and testing only; physical operation will use real
+sensor feedback and timing without a simulator connection. Optional offloading
+applies only to LLM inference, with perception and robot execution remaining
+onboard. See the [target deployment](../README.md#target-deployment).
 
-Environment: Ubuntu 24.04, ROS 2 Jazzy, Python 3.12, Fast DDS, and Isaac Sim
-6.2.0 with NVIDIA’s bundled `isaacsim.ros2.control` 0.1.6. Isaac uses its bundled
+Jetson deployment, real-camera integration, and physical motor transport remain
+to be implemented. No serial driver or physical backend is included in this
+workspace. The commands below describe the current development setup.
+
+Current workstation environment: Ubuntu 24.04, ROS 2 Jazzy, Python 3.12, Fast DDS,
+and Isaac Sim 6.2.0 with NVIDIA’s bundled `isaacsim.ros2.control` 0.1.6. Isaac uses its bundled
 ros2_control 4.47.0; mock uses the workspace’s 4.48.1. The shared
 ros2_controllers are 4.42.1. This runner requires Isaac 6.2.
 
@@ -58,6 +68,9 @@ ROS 2 discovery and topics still use the host's network configuration. Use
 bridge. Robot topics, global TF, and camera topics are available through it.
 
 ## Architecture and interfaces
+
+The diagram shows the implemented development backends. A physical backend
+running on Orin is planned and will not route sensor or motor data through Isaac.
 
 ```mermaid
 flowchart TD
@@ -261,7 +274,9 @@ or change the graphics driver. This x86 Ubuntu 24.04/Jazzy setup pins NVIDIA's
 Isaac ROS 4.3 repository and uses CUDA 13.0 libraries with the host's 580-series
 driver. NVIDIA's package dependencies also pull the CUDA toolkit; allow several
 GB for downloads and additional space for extraction. This installer is for the
-simulation workstation, not a Jetson deployment recipe.
+simulation workstation. The Jetson deployment will need its own compatible
+dependency environment for onboard perception, local inference, and ROS control;
+these workstation installers are not a Jetson deployment recipe.
 
 Wait for `Live depth map ready; activating Nav2` and for the Navigation 2 panel
 to show navigation as active. Choose **Nav2 Goal**, then click and drag in mapped
@@ -642,6 +657,11 @@ simulation navigation is opt-in with `agent_navigation:=true` at navigation laun
 and `--enable-navigation` in the agent. This exclusive mode routes controller
 velocity through a leased supervisor/guard path and disables manual velocity inputs
 and RViz goals. See the agent README for build, launch, cancellation, and limitations.
+
+The planned Orin deployment will run this agent's tool execution and perception
+services onboard alongside a local LLM. The hosted adapter can serve as an
+optional offloaded-LLM reference; it does not require offloading perception or
+running Isaac Sim during physical operation.
 
 | Package | Responsibility |
 | --- | --- |

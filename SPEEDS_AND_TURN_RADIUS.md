@@ -41,7 +41,8 @@ that the robot achieves that speed. [Wheel-command conversion and limiting](http
 Local sources: [controller configuration](ros2_ws/src/xlerobot_control/config/controllers.yaml),
 and [source URDF](xlerobot_isaac_sim/source/xlerobot_dd.urdf).
 The 3.0 rad/s example is not a measured motor maximum or an applied Isaac limit.
-Physical motor transport and calibration are deferred until real-robot integration.
+Physical motor transport and calibration are planned for onboard Jetson AGX
+Orin operation; they are not yet implemented or validated on the physical robot.
 
 The original project's software defaults use **r = 0.05 m and L = 0.25 m**,
 which differ from this workspace. Its dual-wheel assembly guide specifies
