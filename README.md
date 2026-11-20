@@ -1,4 +1,4 @@
-# XLeRobot research
+# Agentic XLeRobot
 
 <table>
   <tr>
