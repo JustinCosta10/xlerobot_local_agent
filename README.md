@@ -116,66 +116,35 @@ or motors, but does not replace the Isaac perception/navigation scene.
 
 ## Getting started
 
-From the repository root, build and start the robot interface:
+After installing the prerequisites, build and launch the simulation from the
+repository root:
 
 ```bash
 cd ros2_ws
 ./scripts/build.sh
 source scripts/env.sh
-ros2 launch xlerobot_bringup robot.launch.py backend:=isaac
-```
-
-Use `backend:=mock` for interface tests without Isaac. Foxglove Bridge starts
-automatically at `ws://localhost:8765` and binds to loopback by default;
-use `foxglove:=false` to disable it. See the
-[workspace guide](ros2_ws/README.md#build-and-select-a-backend) for remote access.
-See [keyboard teleoperation](TELEOP.md) and the
-[speed and turning-radius reference](SPEEDS_AND_TURN_RADIUS.md) for manual driving.
-
-The commands below run from `ros2_ws/`. Source `scripts/env.sh` in each terminal,
-including after rebuilding. Run only one robot/navigation stack at a time;
-each navigation launch already starts the robot and Isaac.
-
-For clicked-goal navigation with mapping, YOLOE, and object memory, stop the
-robot-only launch and run:
-
-```bash
-ros2 launch xlerobot_navigation sim_navigation.launch.py
-```
-
-To try the agent without a running simulator or API credentials:
-
-```bash
-ros2 run xlerobot_agent agent --demo --once 'Look for cubes and mugs' \
-  --trace log/agent-demo.jsonl
-```
-
-This is a fixed script with fake perception, so it demonstrates tool flow rather
-than model performance. For live perception, configure `OPENAI_API_KEY` and an
-available model as described in the [agent guide](ros2_ws/src/xlerobot_agent/README.md),
-keep the normal navigation stack running, and start the agent in another sourced
-terminal:
-
-```bash
-ros2 run xlerobot_agent agent --trace log/agent-openai-ros.jsonl
-```
-
-For agent-controlled motion, replace the normal navigation launch with:
-
-```bash
 ros2 launch xlerobot_navigation sim_navigation.launch.py agent_navigation:=true
 ```
 
-Then start the agent in another sourced terminal with the API key configured:
+This starts Isaac Sim, perception, mapping, Nav2, and RViz with agent-controlled
+navigation enabled.
+
+Once the simulation is ready, open a second terminal at the repository root.
+With `OPENAI_API_KEY` set and your model configured in the
+[agent configuration](ros2_ws/src/xlerobot_agent/README.md#configuration), run:
 
 ```bash
-ros2 run xlerobot_agent agent --enable-navigation --trace log/agent-navigation.jsonl
+cd ros2_ws
+source scripts/env.sh
+ros2 run xlerobot_agent agent --enable-navigation
 ```
 
-This mode disables manual velocity inputs and RViz goal control. Use Ctrl+C in
-the agent to cancel its current task. See
-[supervised simulation navigation](ros2_ws/src/xlerobot_agent/README.md#supervised-simulation-navigation)
-for the full launch and cancellation behavior.
+Ask the agent something like **“Find the cracker box and move near it.”**
+Use Ctrl+C in the agent terminal to cancel its current task.
+
+Connect Foxglove to `ws://localhost:8765` for live camera and perception views.
+See the [workspace guide](ros2_ws/README.md) for other launch options and the
+[agent guide](ros2_ws/src/xlerobot_agent/README.md) for configuration and usage.
 
 ## Repository guide
 
