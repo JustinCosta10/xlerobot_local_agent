@@ -1,24 +1,32 @@
 # XLeRobot research
 
-[![XLeRobot beside the table after navigating to an approach pose near a detected cracker box](docs/images/object-approach.webp)](docs/images/object-approach.webp)
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="docs/images/simulation-scene.webp"><img src="docs/images/simulation-scene.webp" width="100%" alt="XLeRobot in the simulated room with a table of household objects and blue cubes"></a>
+      <br><strong>Isaac Sim scene</strong><br>The robot and tabletop objects before navigation.
+    </td>
+    <td width="50%" valign="top">
+      <a href="docs/images/object-approach.webp"><img src="docs/images/object-approach.webp" width="100%" alt="XLeRobot beside the table after navigating to an approach pose near a detected cracker box"></a>
+      <br><strong>Object approach</strong><br>A successful supervised Nav2 approach to the cracker box.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="docs/images/rviz-navigation.webp"><img src="docs/images/rviz-navigation.webp" width="100%" alt="RViz showing the colored nvblox reconstruction, navigation costmap, and robot model"></a>
+      <br><strong>Navigation in RViz</strong><br>Live nvblox reconstruction, navigation costmap, and robot model.
+    </td>
+    <td width="50%" valign="top">
+      <a href="docs/images/foxglove-cracker-detection.webp"><img src="docs/images/foxglove-cracker-detection.webp" width="100%" alt="Foxglove displaying the robot's live head-camera feed with a YOLOE cracker box detection and confidence label"></a>
+      <br><strong>Robot view in Foxglove</strong><br>YOLOE detecting the cracker box through the simulated head camera.
+    </td>
+  </tr>
+</table>
 
-**Isaac Sim:** the robot beside the table after a successful supervised Nav2
-approach to a detected cracker box.
-
-[![Foxglove displaying the robot's live head-camera feed with a YOLOE cracker box detection and confidence label](docs/images/foxglove-cracker-detection.webp)](docs/images/foxglove-cracker-detection.webp)
-
-**Robot view in Foxglove:** live YOLOE detection from the simulated head camera,
-with the vocabulary set to `cracker box`. The label and confidence come from
-`/xlerobot/yoloe/segmentation/image_raw/compressed`.
-
-[![RViz navigation scene showing the colored nvblox reconstruction, obstacle-clearance costmap, and robot model](docs/images/rviz-navigation.webp)](docs/images/rviz-navigation.webp)
-
-**Navigation in RViz:** nvblox reconstructs the scene from simulated depth and
-RGB observations, alongside the navigation costmap and robot model.
-
-Click any image for its full-resolution view. More captures:
-[starting scene](docs/images/simulation-scene.webp),
-[robot close-up](docs/images/robot-detail.webp), and
+The Foxglove view uses the `cracker box` vocabulary and displays the live
+`/xlerobot/yoloe/segmentation/image_raw/compressed` stream.
+Click any image for its full-resolution view, or see the
+[robot close-up](docs/images/robot-detail.webp) and
 [full RViz window](docs/images/rviz-window.webp).
 
 An undergraduate senior thesis exploring **which robot tools and feedback formats
