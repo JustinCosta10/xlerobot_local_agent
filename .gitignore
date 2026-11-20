@@ -1,0 +1,29 @@
+# Private research notes stay on this machine.
+/RESEARCH_PROPOSAL.md
+
+# Local credentials and assistant configuration.
+.env
+.env.*
+!.env.example
+.aws/
+.ssh/
+.codex/
+.agents/
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Python caches and local runtime data.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+*.sqlite
+*.sqlite3
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite3-shm
+*.sqlite3-wal
+*.mcap
+*.bag

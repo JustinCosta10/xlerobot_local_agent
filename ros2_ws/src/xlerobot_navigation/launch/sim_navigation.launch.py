@@ -63,7 +63,9 @@ def setup(context):
                           "controller_service_timeout": "20",
                           "exclusive_navigation": value("agent_navigation"),
                           "headless": value("headless"), "rviz": "false",
-                          "foxglove": value("foxglove")}.items())]
+                          "foxglove": value("foxglove"),
+                          "foxglove_address": value("foxglove_address"),
+                          "foxglove_port": value("foxglove_port")}.items())]
 
     if value("yoloe") == "true":
         perception = Path(get_package_share_directory("xlerobot_perception"))
@@ -159,6 +161,9 @@ def generate_launch_description():
         DeclareLaunchArgument("agent_navigation", default_value="false", choices=["true", "false"],
                               description="Exclusive supervised agent motion; disables manual velocity and RViz goals"),
         DeclareLaunchArgument("foxglove", default_value="true", choices=["true", "false"]),
+        DeclareLaunchArgument("foxglove_address", default_value="127.0.0.1",
+                              description="Foxglove WebSocket bind address; loopback by default"),
+        DeclareLaunchArgument("foxglove_port", default_value="8765"),
         DeclareLaunchArgument("yoloe", default_value="true", choices=["true", "false"],
                               description="Start YOLOE detection with live vocabulary and class segmentation"),
         DeclareLaunchArgument("yoloe_image_topic", default_value="/camera/color/image_raw"),

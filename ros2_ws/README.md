@@ -16,7 +16,7 @@ ros2_controllers are 4.42.1. This runner requires Isaac 6.2.
 ## Build and select a backend
 
 ```bash
-cd /home/justin/xlerobot-research/ros2_ws
+cd /path/to/xlerobot-research/ros2_ws
 ./scripts/build.sh
 source scripts/env.sh
 
@@ -46,9 +46,14 @@ needed. `XLEROBOT_ASSET` defaults to the sibling
 `xlerobot_isaac_sim/xlerobot_dd.usd`. Launch prints the resolved USD path.
 
 Foxglove Bridge starts with every backend, under the robot namespace, and follows
-the backend's `use_sim_time` setting. Connect Foxglove to `ws://localhost:8765`,
-or `ws://<robot-ip>:8765` from another computer. The default bind address is
-`0.0.0.0`; set `foxglove_address:=127.0.0.1` for local connections only. Use
+the backend's `use_sim_time` setting. Connect Foxglove to `ws://localhost:8765`.
+The default bind address is `127.0.0.1`, so the bridge accepts local connections
+only. For another computer, forward port 8765 through SSH, or explicitly set
+`foxglove_address:=0.0.0.0` on a trusted network and connect to
+`ws://<robot-ip>:8765`. The bridge has no authentication configured; do not expose
+it to the public internet. Both robot and navigation launch accept the address
+and port arguments. This bind setting only restricts the WebSocket bridge;
+ROS 2 discovery and topics still use the host's network configuration. Use
 `foxglove_port:=8766` to change the port, or `foxglove:=false` to disable the
 bridge. Robot topics, global TF, and camera topics are available through it.
 

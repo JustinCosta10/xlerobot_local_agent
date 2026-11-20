@@ -6,7 +6,8 @@ from pathlib import Path
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchContext
-from launch.actions import DeclareLaunchArgument, ExecuteProcess, RegisterEventHandler
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, GroupAction
+from launch.actions import IncludeLaunchDescription, RegisterEventHandler
 from launch.events import Shutdown
 from launch.events.process import ProcessExited
 import pytest
@@ -70,3 +71,39 @@ def test_critical_exits_request_only_one_shutdown_across_launches():
     assert len(navigation.stop_launch(context, "Supervisor failed")) == 1
     assert not bringup.stop_launch(context, "Isaac exited")
     assert not navigation.stop_launch(context, "Controller exited")
+
+
+@pytest.mark.parametrize("overrides, expected_address, expected_port", [
+    ({}, "127.0.0.1", "8765"),
+    ({"foxglove_address": "192.0.2.10", "foxglove_port": "8766"}, "192.0.2.10", "8766"),
+])
+def test_navigation_preserves_local_bridge_default_and_explicit_remote_override(
+        overrides, expected_address, expected_port):
+    navigation = launch_module("xlerobot_navigation", "sim_navigation.launch.py")
+    bringup = launch_module("xlerobot_bringup", "robot.launch.py")
+    context = LaunchContext()
+    context.launch_configurations.update(overrides)
+    for action in navigation.generate_launch_description().entities:
+        if isinstance(action, DeclareLaunchArgument):
+            action.execute(context)
+    robot = next(action for action in navigation.setup(context)
+                 if isinstance(action, IncludeLaunchDescription))
+
+    robot_context = LaunchContext()
+    robot_context.launch_configurations.update(dict(robot.launch_arguments))
+    for action in bringup.generate_launch_description().entities:
+        if isinstance(action, DeclareLaunchArgument):
+            action.execute(robot_context)
+    bridge_group = next(action for action in bringup.setup(robot_context)
+                        if isinstance(action, GroupAction))
+    bridge = next(action for action in bridge_group.get_sub_entities()
+                  if isinstance(action, IncludeLaunchDescription))
+    bridge_arguments = dict(bridge.launch_arguments)
+    assert bridge_arguments["address"] == expected_address
+    assert bridge_arguments["port"] == expected_port
+
+    direct_context = LaunchContext()
+    for action in bringup.generate_launch_description().entities:
+        if isinstance(action, DeclareLaunchArgument):
+            action.execute(direct_context)
+    assert direct_context.launch_configurations["foxglove_address"] == "127.0.0.1"

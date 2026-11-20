@@ -157,7 +157,7 @@ def generate_launch_description():
                               description="Seconds before retrying a controller-manager service request"),
         DeclareLaunchArgument("foxglove", default_value="true", choices=["true", "false"],
                               description="Start Foxglove Bridge for ROS visualization"),
-        DeclareLaunchArgument("foxglove_address", default_value="0.0.0.0",
+        DeclareLaunchArgument("foxglove_address", default_value="127.0.0.1",
                               description="Foxglove WebSocket bind address"),
         DeclareLaunchArgument("foxglove_port", default_value="8765",
                               description="Foxglove WebSocket port"),

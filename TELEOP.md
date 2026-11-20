@@ -1,11 +1,11 @@
 # Keyboard control
 
-`teleop_twist_keyboard` is already installed on this computer.
+Install the ROS 2 Jazzy `teleop_twist_keyboard` package before using this guide.
 
 With the robot running, open a **second terminal** and paste:
 
 ```bash
-cd /home/justin/xlerobot-research/ros2_ws
+cd /path/to/xlerobot-research/ros2_ws
 source scripts/env.sh
 # Slow preset: 0.10 m/s forward; turn = pi/6 rad/s = 30 degrees per second.
 ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args \
@@ -53,7 +53,7 @@ robot namespace; no `use_sim_time` flag is needed for teleop.
 If the robot is not running yet, start it in the first terminal:
 
 ```bash
-cd /home/justin/xlerobot-research/ros2_ws
+cd /path/to/xlerobot-research/ros2_ws
 source scripts/env.sh
 ros2 launch xlerobot_bringup robot.launch.py backend:=isaac
 ```

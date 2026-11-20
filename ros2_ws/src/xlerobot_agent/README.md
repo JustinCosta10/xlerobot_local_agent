@@ -5,8 +5,9 @@ and reads **confirmed stored objects and their last known locations**. It attach
 existing robot stack. Perception is enabled by default; supervised pose navigation
 can be enabled explicitly for simulation.
 
-The implementation follows the repository's
-[agentic perception plan](../../../AGENTIC_PERCEPTION_PLAN.md).
+This prototype supports the repository's research on local language-model
+planning for mobile manipulation. See the [project roadmap](../../../README.md#planned-features-and-research-work);
+local-model integration and manipulation remain planned work.
 
 ## Build and try the offline demo
 
@@ -33,9 +34,9 @@ in the workspace overlay.
 
 ## Test OpenAI when ready
 
-No API credentials are configured by this implementation. Activate/link your
-subscription API-credit benefit in your OpenAI account if needed, then export
-an API key locally. Do not put it in YAML, source control, or chat. In Bash:
+No API credentials are configured by this implementation. Configure API access
+in your OpenAI account, then export an API key locally. Keep credentials out of
+YAML, source control, and traces. In Bash:
 
 ```bash
 read -rsp 'OpenAI API key: ' OPENAI_API_KEY
@@ -53,7 +54,7 @@ For real perception, keep your existing simulation/perception session running,
 then in another terminal:
 
 ```bash
-cd /home/justin/xlerobot-research/ros2_ws
+cd /path/to/xlerobot-research/ros2_ws
 source scripts/env.sh
 # Export OPENAI_API_KEY in this terminal too, if needed.
 ros2 run xlerobot_agent agent --trace log/agent-openai-ros.jsonl
@@ -291,5 +292,4 @@ position, facing it. This does not establish model-selected navigation quality;
 that requires a separate live-model trial.
 
 References: [OpenAI function calling](https://developers.openai.com/api/docs/guides/function-calling),
-[subscription API credits](https://developers.openai.com/api/docs/guides/chatgpt-api-credits),
 [model documentation](https://developers.openai.com/api/docs/models/gpt-6-astra).
